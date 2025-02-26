@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lista de Docentes</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet" />
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+
+  <link rel="stylesheet" href="static/css/styleDocente.css" />
+
+  <style>
+    td {
+      vertical-align: middle;
+      /* Asegura alineación uniforme */
+      text-align: center;
+      /* Centra el contenido de la celda */
+    }
+
+    .action-btn {
+      display: inline-flex;
+      /* Evita que el botón cambie de tamaño */
+      align-items: center;
+      justify-content: center;
+      padding: 6px 10px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="navbar">
+    <ul>
+      <li>
+        <a href="/admin"><i class="fas fa-chalkboard-teacher"></i> Información Docentes</a>
+      </li>
+    </ul>
+    <button class="regresar-btn" id="logout-btn">
+      <i class="fas fa-sign-out-alt"></i> Cerrar sesión
+    </button>
+  </div>
+
+  <div class="main-content">
+    <h1>Lista de Docentes</h1>
+
+    <!-- Barra de búsqueda justo encima de la tabla -->
+    <div class="search-bar">
+      <input type="text" id="search-input" class="search-input" placeholder="Buscar docente..." />
+      <button class="search-btn" id="search-btn">Buscar</button>
+    </div>
+
+    <!-- Select para escoger la columna a filtrar -->
+    <select id="filterField" onchange="updateFilterValues()">
+      <option value="">Seleccione una columna</option>
+      <option value="lugar_residencia">Lugar de residencia</option>
+      <option value="nivel_formacion">Nivel de formación</option>
+      <option value="areas_especializacion">Áreas de especialización</option>
+      <option value="disponibilidad_lunes">Disponibilidad Lunes</option>
+      <option value="disponibilidad_martes">Disponibilidad Martes</option>
+      <option value="disponibilidad_miercoles">
+        Disponibilidad Miércoles
+      </option>
+      <option value="disponibilidad_jueves">Disponibilidad Jueves</option>
+      <option value="disponibilidad_sabado">Disponibilidad Sábado</option>
+      <option value="disponibilidad_viajar">
+        Disponibilidad para viajar
+      </option>
+      <option value="equipo_conexion_estable">
+        Equipo con conexión estable
+      </option>
+      <option value="restriccion_contractual">Restricción contractual</option>
+    </select>
+
+    <!-- Select para escoger el valor, que se llenará dinámicamente -->
+    <select id="filterValue" disabled>
+      <option value="">Seleccione un valor</option>
+    </select>
+
+    <button onclick="filterTeachers()">Filtrar</button>
+
+    <!-- Contenedor para mostrar los resultados -->
+    <div id="results"></div>
+
+    <!-- Tabla de Docentes -->
+    <table id="docentes-table">
+      <thead>
+        <tr>
+          <th>Nombre docente</th>
+          <th>Correo Electrónico</th>
+          <th>Teléfono</th>
+          <th>Nivel de formación</th>
+          <th>Ver información completa</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- rows-placeholder -->
+      </tbody>
+    </table>
+
+    <!-- Paginación -->
+    <div class="paginator-container">
+      <button id="prev-page" class="page-btn">Anterior</button>
+      <span id="page-info"></span>
+      <button id="next-page" class="page-btn">Siguiente</button>
+    </div>
+
+    <!-- Sección de carga de archivos debajo del paginador -->
+    <div class="file-upload">
+      <form id="excel-upload-form" enctype="multipart/form-data">
+        <label for="file">Selecciona un archivo Excel (.xlsx):</label>
+        <input type="file" id="file" name="file" accept=".xlsx" required />
+        <button type="submit">Subir</button>
+      </form>
+      <!-- Mensaje de éxito o error -->
+      <div id="message" style="margin-top: 10px"></div>
+    </div>
+    <script src="upload.js"></script>
+
+    <!-- Modal de detalle del docente con pestañas -->
+    <div class="modal fade" id="teacherDetailModal" tabindex="-1" aria-labelledby="teacherDetailModalLabel"
+      aria-hidden="true">
+      <div class="modal-dialog modal-xl"> <!-- Modal extra grande para mayor comodidad -->
+        <div class="modal-content">
+          <div class="modal-header bg-primary text-white">
+            <h5 class="modal-title" id="teacherDetailModalLabel">Detalle del Docente</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+              aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body">
+            <!-- Navegación por pestañas -->
+            <ul class="nav nav-tabs" id="teacherTab" role="tablist">
+              <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="basic-tab" data-bs-toggle="tab" data-bs-target="#basic"
+                  type="button" role="tab" aria-controls="basic" aria-selected="true">Datos Básicos</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="contact-tab" data-bs-toggle="tab" data-bs-target="#contact" type="button"
+                  role="tab" aria-controls="contact" aria-selected="false">Contacto</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="education-tab" data-bs-toggle="tab" data-bs-target="#education"
+                  type="button" role="tab" aria-controls="education" aria-selected="false">Formación y
+                  Especialización</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="availability-tab" data-bs-toggle="tab" data-bs-target="#availability"
+                  type="button" role="tab" aria-controls="availability" aria-selected="false">Disponibilidad y
+                  Otros</button>
+              </li>
+            </ul>
+            <div class="tab-content mt-3" id="teacherTabContent">
+              <div class="tab-pane fade show active" id="basic" role="tabpanel" aria-labelledby="basic-tab">
+                <!-- Contenido de Datos Básicos -->
+              </div>
+              <div class="tab-pane fade" id="contact" role="tabpanel" aria-labelledby="contact-tab">
+                <!-- Contenido de Contacto -->
+              </div>
+              <div class="tab-pane fade" id="education" role="tabpanel" aria-labelledby="education-tab">
+                <!-- Contenido de Formación y Especialización -->
+              </div>
+              <div class="tab-pane fade" id="availability" role="tabpanel" aria-labelledby="availability-tab">
+                <!-- Contenido de Disponibilidad y Otros -->
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <script>
+      let currentPage = 1;
+      let totalPages = 1;
+      const docentesPerPage = 5;
+
+      document.addEventListener("DOMContentLoaded", () => {
+        renderDocentes(currentPage);
+        document
+          .getElementById("search-input")
+          .addEventListener("input", searchDocentes);
+        document
+          .getElementById("prev-page")
+          .addEventListener("click", () => changePage(-1));
+        document
+          .getElementById("next-page")
+          .addEventListener("click", () => changePage(1));
+      });
+
+      async function fetchDocentes(page = 1) {
+        try {
+          const response = await fetch(
+            `http://localhost:8000/docentes_paginated?page=${page}&per_page=${docentesPerPage}`
+          );
+          if (!response.ok) throw new Error("Error al obtener los datos.");
+          const data = await response.json();
+          totalPages = data.total_pages;
+          return data.docentes;
+        } catch (error) {
+          console.error("Error al obtener los datos:", error);
+          document.querySelector("#docentes-table tbody").innerHTML = `
+      <tr><td colspan="5" style="text-align:center; color:red;">Error cargando docentes</td></tr>`;
+          return [];
+        }
+      }
+
+      async function renderDocentes(page) {
+        const docentes = await fetchDocentes(page);
+        const tbody = document.querySelector("#docentes-table tbody");
+        tbody.innerHTML = "";
+
+        docentes.forEach((docente) => {
+          const row = document.createElement("tr");
+          row.innerHTML = `
+
+                  <td>${docente.nombre_completo}</td>
+                  <td>${docente.correo_electronico}</td>
+                  <td>${docente.numero_celular}</td>
+                  <td>${docente.nivel_formacion}</td>
+                  <td class="action-cell">
+                  <button class="action-btn view-btn" onclick="viewDocente(${docente.id})">
+                    <i class="fas fa-eye"></i> <!-- Cambio de ícono de editar a ver -->
+                  </button>
+                  </td>
+              `;
+          tbody.appendChild(row);
+        });
+
+        // Actualizar la información de la página
+        document.getElementById(
+          "page-info"
+        ).textContent = `Página ${currentPage} de ${totalPages}`;
+
+        // Deshabilitar botones de página según sea necesario
+        document.getElementById("prev-page").disabled = currentPage === 1;
+        document.getElementById("next-page").disabled =
+          currentPage === totalPages;
+      }
+
+      function changePage(direction) {
+        if (
+          (direction === -1 && currentPage > 1) ||
+          (direction === 1 && currentPage < totalPages)
+        ) {
+          currentPage += direction;
+          document.getElementById("search-input").value = "";
+          renderDocentes(currentPage);
+        }
+      }
+      // Función para salir con el botón
+      document.getElementById("logout-btn").onclick = async function () {
+        const response = await fetch("/logout", { method: "POST" });
+        if (response.ok) {
+          window.location.href = "/";
+        }
+      };
+
+      async function searchDocentes() {
+        const query = document.getElementById("search-input").value.toLowerCase();
+
+        if (query.trim() === "") {
+          return renderDocentes(currentPage); // Si el input está vacío, muestra la paginación normal
+        }
+
+        try {
+          const response = await fetch(
+            `http://localhost:8000/docentes_search?query=${encodeURIComponent(query)}`
+          );
+          if (!response.ok) throw new Error("Error al buscar docentes.");
+          const data = await response.json();
+
+          const tbody = document.querySelector("#docentes-table tbody");
+          tbody.innerHTML = ""; // Limpiar tabla antes de agregar resultados
+
+          data.docentes.forEach((docente) => {
+            const row = document.createElement("tr");
+
+            // Mantener las clases de la celda para evitar cambios en la alineación
+            row.innerHTML = `
+        <td>${docente.nombre_completo}</td>
+        <td>${docente.correo_electronico}</td>
+        <td>${docente.numero_celular}</td>
+        <td>${docente.nivel_formacion}</td>
+        <td class="text-center"> 
+          <button class="action-btn view-btn" onclick="viewDocente(${docente.id})">
+            <i class="fas fa-eye"></i>
+          </button>
+        </td>
+      `;
+
+            tbody.appendChild(row);
+          });
+
+          // Mostrar que son resultados de búsqueda
+          document.getElementById("page-info").textContent = `Resultados de búsqueda`;
+          document.getElementById("prev-page").disabled = true;
+          document.getElementById("next-page").disabled = true;
+        } catch (error) {
+          console.error("Error al buscar docentes:", error);
+        }
+      }
+      console.log("El script de carga de archivo está activo.");
+
+      // Esperar a que el DOM cargue antes de ejecutar el script
+      document.addEventListener("DOMContentLoaded", function () {
+        const form = document.getElementById("excel-upload-form");
+
+        if (form) {
+          form.addEventListener("submit", handleFileUpload);
+        }
+      });
+
+      // Función principal para manejar la carga del archivo
+      async function handleFileUpload(event) {
+        console.log("Evento submit capturado.");
+        event.preventDefault(); // Evitar recarga de la página
+
+        const messageElement = document.getElementById("message");
+        messageElement.innerHTML = ""; // Limpiar mensajes previos
+
+        const fileInput = document.getElementById("file");
+        const file = fileInput.files[0];
+
+        console.log("Archivo seleccionado:", file);
+
+        // Validar si se seleccionó un archivo
+        if (!file) {
+          showMessage("Por favor, selecciona un archivo Excel.", "red");
+          return;
+        }
+
+        // Validar que el archivo sea Excel
+        if (!isValidExcelFile(file)) {
+          showMessage(
+            "El archivo debe ser un archivo Excel (.xlsx o .xls).",
+            "red"
+          );
+          return;
+        }
+
+        // Crear objeto FormData
+        const formData = new FormData();
+        formData.append("file", file);
+
+        console.log("FormData preparado para enviar:", formData);
+
+        // Mostrar indicador de carga
+        const loadingIndicator = createLoadingIndicator();
+        messageElement.appendChild(loadingIndicator);
+
+        try {
+          // Enviar archivo al backend
+          const response = await uploadFile(formData);
+
+          // Eliminar indicador de carga
+          loadingIndicator.remove();
+
+          // Manejar la respuesta del backend
+          handleServerResponse(response);
+        } catch (error) {
+          console.error("Error en la solicitud:", error);
+          showMessage(
+            "Error al intentar cargar el archivo. Intenta nuevamente.",
+            "red"
+          );
+        }
+      }
+
+      // Función para validar si el archivo es un Excel
+      function isValidExcelFile(file) {
+        const allowedTypes = [
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "application/vnd.ms-excel",
+        ];
+        return allowedTypes.includes(file.type);
+      }
+
+      // Función para enviar el archivo al backend
+      async function uploadFile(formData) {
+        console.log("Enviando solicitud al backend...");
+        const response = await fetch("/uploadfile/", {
+          method: "POST",
+          body: formData,
+        });
+
+        return response.json(); // Convertir la respuesta en JSON
+      }
+
+      // Función para manejar la respuesta del backend
+      function handleServerResponse(data) {
+        console.log("Datos recibidos del backend:", data);
+        if (data.message) {
+          showMessage(data.message, "green");
+        } else {
+          showMessage(data.detail || "Algo salió mal en el servidor.", "red");
+        }
+      }
+
+      // Función para mostrar mensajes en la interfaz
+      function showMessage(message, color) {
+        const messageElement = document.getElementById("message");
+        messageElement.innerHTML = `<p style="color: ${color};">${message}</p>`;
+      }
+
+      // Función para crear un indicador de carga
+      function createLoadingIndicator() {
+        const loadingIndicator = document.createElement("div");
+        loadingIndicator.classList.add("loading-spinner");
+        loadingIndicator.textContent = "Cargando... Por favor espere.";
+        return loadingIndicator;
+      }
+
+      // Función para actualizar el select de valores al cambiar la columna
+      function updateFilterValues() {
+        const field = document.getElementById("filterField").value;
+        const filterValueSelect = document.getElementById("filterValue");
+        filterValueSelect.innerHTML = ""; // Limpiar opciones previas
+
+        if (!field) {
+          filterValueSelect.disabled = true;
+          return;
+        }
+
+        filterValueSelect.disabled = false;
+
+        // Petición para obtener los valores únicos de la columna seleccionada
+        fetch(`/teachers/distinct?field=${field}`)
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error("Error al obtener los valores");
+            }
+            return response.json();
+          })
+          .then((data) => {
+            // Opción por defecto
+            const defaultOption = document.createElement("option");
+            defaultOption.value = "";
+            defaultOption.text = "Seleccione un valor";
+            filterValueSelect.appendChild(defaultOption);
+
+            // Se recorren y agregan los valores obtenidos
+            data.forEach((value) => {
+              const option = document.createElement("option");
+              option.value = value;
+              option.text = value;
+              filterValueSelect.appendChild(option);
+            });
+          })
+          .catch((error) => console.error("Error:", error));
+      }
+
+      // Función para realizar el filtrado y mostrar resultados
+      function filterTeachers() {
+        const field = document.getElementById("filterField").value;
+        const value = document.getElementById("filterValue").value;
+
+        if (!field || !value) {
+          alert("Seleccione ambos campos para filtrar");
+          return;
+        }
+
+        fetch(
+          `/teachers/filter?field=${field}&value=${encodeURIComponent(value)}`
+        )
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error("Error en la petición");
+            }
+            return response.json();
+          })
+          .then((data) => {
+            displayResults(data);
+          })
+          .catch((error) => console.error("Error:", error));
+      }
+
+      // Función para mostrar los resultados filtrados en la tabla
+      function displayResults(data) {
+        const tbody = document.querySelector("#docentes-table tbody");
+        tbody.innerHTML = ""; // Limpiar filas previas
+
+        if (data.length === 0) {
+          // Si no hay resultados, mostrar una fila con un mensaje
+          const row = document.createElement("tr");
+          const cell = document.createElement("td");
+          cell.colSpan = 5;
+          cell.style.textAlign = "center";
+          cell.textContent = "No se encontraron resultados.";
+          row.appendChild(cell);
+          tbody.appendChild(row);
+          return;
+        }
+
+        // Recorrer los docentes filtrados y agregarlos a la tabla
+        data.forEach((teacher) => {
+          const row = document.createElement("tr");
+          row.innerHTML = `
+      <td>${teacher.nombre_completo}</td>
+      <td>${teacher.correo_electronico}</td>
+      <td>${teacher.numero_celular}</td>
+      <td>${teacher.nivel_formacion}</td>
+      <td class="action-cell">
+        <button class="action-btn view-btn" onclick="viewDocente(${teacher.id})">
+          <i class="fas fa-eye"></i>
+        </button>
+      </td>
+    `;
+          tbody.appendChild(row);
+        });
+      }
+
+      function viewDocente(id) {
+        fetch(`/teachers/${id}`)
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error("Error al obtener el detalle del docente");
+            }
+            return response.json();
+          })
+          .then((data) => {
+            // Función para validar valores nulos o undefined
+            const validateData = (value) => (value ?? "No aplica");
+
+            // Contenido para la pestaña de Datos Básicos
+            const fecha = new Date(data.marca_temporal).toISOString().split("T")[0];
+            const basicHTML = `
+              <p><strong>Nombre Completo:</strong> ${validateData(data.nombre_completo)}</p>
+              <p><strong>Fecha de registro formulario:</strong> ${validateData(fecha)}</p>
+          `;
+
+
+            // Contenido para la pestaña de Contacto
+            const contactHTML = `
+        <p><strong>Correo Electrónico:</strong> ${validateData(data.correo_electronico)}</p>
+        <p><strong>Número Celular:</strong> ${validateData(data.numero_celular)}</p>
+        <p><strong>Otro Número:</strong> ${validateData(data.otro_numero_contacto)}</p>
+        <p><strong>Envío WhatsApp:</strong> ${validateData(data.envio_whatsapp)}</p>
+        <p><strong>Lugar de Residencia:</strong> ${validateData(data.lugar_residencia)}</p>
+      `;
+
+            // Contenido para la pestaña de Formación y Especialización
+            const educationHTML = `
+        <p><strong>Nivel de Formación:</strong> ${validateData(data.nivel_formacion)}</p>
+        <p><strong>Títulos Pregrado:</strong> ${validateData(data.titulos_pregrado)}</p>
+        <p><strong>Títulos Posgrado:</strong> ${validateData(data.titulos_posgrado)}</p>
+        <p><strong>Certificaciones:</strong> ${validateData(data.certificaciones)}</p>
+        <p><strong>Áreas de Especialización:</strong> ${validateData(data.areas_especializacion)}</p>
+        <p><strong>Resumen de Experiencia:</strong> ${validateData(data.resumen_experiencia)}</p>
+        <p><strong>Casos de Impacto:</strong> ${validateData(data.casos_impacto)}</p>
+      `;
+
+            // Contenido para la pestaña de Disponibilidad y Otros
+            const availabilityHTML = `
+        <p><strong>Disponibilidad Lunes:</strong> ${validateData(data.disponibilidad_lunes)}</p>
+        <p><strong>Disponibilidad Martes:</strong> ${validateData(data.disponibilidad_martes)}</p>
+        <p><strong>Disponibilidad Miércoles:</strong> ${validateData(data.disponibilidad_miercoles)}</p>
+        <p><strong>Disponibilidad Jueves:</strong> ${validateData(data.disponibilidad_jueves)}</p>
+        <p><strong>Disponibilidad Sábado:</strong> ${validateData(data.disponibilidad_sabado)}</p>
+        <p><strong>Disponibilidad para Viajar:</strong> ${validateData(data.disponibilidad_viajar)}</p>
+        <p><strong>Equipo con Conexión Estable:</strong> ${validateData(data.equipo_conexion_estable)}</p>
+        <p><strong>Estilo Formador:</strong> ${validateData(data.estilo_formador)}</p>
+        <p><strong>Metodología:</strong> ${validateData(data.metodologia)}</p>
+        <p><strong>Restricción Contractual:</strong> ${validateData(data.restriccion_contractual)}</p>
+        <p><strong>Hoja de Vida:</strong> ${data.hoja_vida ? `<a href="${data.hoja_vida}" target="_blank">${data.hoja_vida}</a>` : "No aplica"}</p>
+        <p><strong>Video Enlace:</strong> ${data.video_enlace ? `<a href="${data.video_enlace}" target="_blank">${data.video_enlace}</a>` : "No aplica"}</p>
+      `;
+
+            // Inyectar contenido en cada pestaña
+            document.getElementById("basic").innerHTML = basicHTML;
+            document.getElementById("contact").innerHTML = contactHTML;
+            document.getElementById("education").innerHTML = educationHTML;
+            document.getElementById("availability").innerHTML = availabilityHTML;
+
+            // Mostrar el modal
+            let teacherModal = new bootstrap.Modal(document.getElementById("teacherDetailModal"));
+            teacherModal.show();
+          })
+          .catch((error) => {
+            console.error("Error:", error);
+            alert("Error al cargar el detalle del docente.");
+          });
+      }
+
+      // Inicializar la tabla de docentes
+      renderDocentes(currentPage);
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+</body>
+
+</html>
