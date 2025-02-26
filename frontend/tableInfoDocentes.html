@@ -62,6 +62,8 @@
         Disponibilidad Miércoles
       </option>
       <option value="disponibilidad_jueves">Disponibilidad Jueves</option>
+      <option value="disponibilidad_viernes">Disponibilidad Viernes</option>
+
       <option value="disponibilidad_sabado">Disponibilidad Sábado</option>
       <option value="disponibilidad_viajar">
         Disponibilidad para viajar
@@ -390,12 +392,12 @@
       }
 
       // Función para manejar la respuesta del backend
-      function handleServerResponse(data) {
-        console.log("Datos recibidos del backend:", data);
-        if (data.message) {
-          showMessage(data.message, "green");
+      function handleServerResponse(response) {
+        // Supongamos que response es un objeto JSON con 'success' y 'message'
+        if (response.success) {
+          showMessage(response.message, "green"); // Muestra el mensaje de éxito
         } else {
-          showMessage(data.detail || "Algo salió mal en el servidor.", "red");
+          showMessage("Hubo un problema: " + response.message, "red");
         }
       }
 
@@ -558,6 +560,8 @@
         <p><strong>Disponibilidad Martes:</strong> ${validateData(data.disponibilidad_martes)}</p>
         <p><strong>Disponibilidad Miércoles:</strong> ${validateData(data.disponibilidad_miercoles)}</p>
         <p><strong>Disponibilidad Jueves:</strong> ${validateData(data.disponibilidad_jueves)}</p>
+        <p><strong>Disponibilidad Viernes:</strong> ${validateData(data.disponibilidad_viernes)}</p>
+
         <p><strong>Disponibilidad Sábado:</strong> ${validateData(data.disponibilidad_sabado)}</p>
         <p><strong>Disponibilidad para Viajar:</strong> ${validateData(data.disponibilidad_viajar)}</p>
         <p><strong>Equipo con Conexión Estable:</strong> ${validateData(data.equipo_conexion_estable)}</p>

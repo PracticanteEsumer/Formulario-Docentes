@@ -47,7 +47,7 @@ class Docente(BaseModel):
     disponibilidad_martes: str
     disponibilidad_miercoles: str
     disponibilidad_jueves: str
-    disponibilidad_sabado: str
+    disponibilidad_viernes: str
     disponibilidad_viajar: str
     equipo_conexion_estable: str
     estilo_formador: str
@@ -56,7 +56,9 @@ class Docente(BaseModel):
     restriccion_contractual: str
     hoja_vida: Optional[str] = None
     video_enlace: Optional[str] = None
-    aviso_proteccion_datos: bool
+    aviso_proteccion_datos: str
+    disponibilidad_sabado: str
+
 
 
 # Función asíncrona para insertar un docente en la base de datos
@@ -68,11 +70,11 @@ async def insert_docente(connection, docente_data):
             otro_numero_contacto, envio_whatsapp, lugar_residencia, nivel_formacion,
             titulos_pregrado, titulos_posgrado, areas_especializacion, resumen_experiencia,
             certificaciones, disponibilidad_lunes, disponibilidad_martes, disponibilidad_miercoles,
-            disponibilidad_jueves, disponibilidad_sabado, disponibilidad_viajar, equipo_conexion_estable,
+            disponibilidad_jueves,disponibilidad_viernes,disponibilidad_viajar, equipo_conexion_estable,
             estilo_formador, metodologia, casos_impacto, restriccion_contractual, hoja_vida, video_enlace,
-            aviso_proteccion_datos
+            aviso_proteccion_datos,disponibilidad_sabado
         ) VALUES (
-            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
         )
     """
     try:
@@ -84,18 +86,14 @@ async def insert_docente(connection, docente_data):
         cursor.close()
 
 # Función asíncrona para procesar el archivo Excel y guardar los datos en la BD
-async def process_excel(file: UploadFile):
-    # Leer el archivo en bytes
+async def process_excel(file: UploadFile) -> dict:
     file_bytes = await file.read()
     df = pd.read_excel(BytesIO(file_bytes))
     
-    # Limpiar espacios en blanco al inicio y final de cada nombre de columna
+    # Limpiar espacios en blanco en nombres de columna
     df.columns = df.columns.map(lambda x: x.strip() if isinstance(x, str) else x)
     
-    # Imprimir columnas para verificar (puedes comentar esta línea en producción)
-    print("Columnas en el Excel:", df.columns.tolist())
-    
-    # Lista de columnas esperadas (deben coincidir exactamente con los encabezados después de aplicar strip())
+    # Lista de columnas esperadas
     columnas_esperadas = [
         "Marca temporal",
         "¿Cuál es tu nombre completo?",
@@ -103,7 +101,7 @@ async def process_excel(file: UploadFile):
         "Número de celular",
         "¿Tienes otro número de contacto?",
         "¿Permites el envío de mensajes vía WhatsApp?",
-        "Lugar de residencia:",
+        "Lugar de residencia (Ciudad):",
         "¿Cuál es tu último nivel de formación?",
         "Título(s) de pregrado obtenido(s)",
         "Título(s) de posgrado obtenido(s)",
@@ -114,7 +112,7 @@ async def process_excel(file: UploadFile):
         "¿En qué días y horas tienes mayor disponibilidad para actividades presenciales o virtuales?  [Martes]",
         "¿En qué días y horas tienes mayor disponibilidad para actividades presenciales o virtuales?  [Miércoles ]",
         "¿En qué días y horas tienes mayor disponibilidad para actividades presenciales o virtuales?  [Jueves]",
-        "¿En qué días y horas tienes mayor disponibilidad para actividades presenciales o virtuales?  [Sábado]",
+        "¿En qué días y horas tienes mayor disponibilidad para actividades presenciales o virtuales?  [Viernes]",
         "¿Tienes disponibilidad para viajar a otros municipios/departamentos?",
         "¿Cuentas con equipo y conexión estable para sesiones virtuales? (Sí / No)",
         "¿Cómo describes tu estilo como formador(a) o consultor(a)?",
@@ -123,69 +121,116 @@ async def process_excel(file: UploadFile):
         "¿Tienes algún tipo de restricción contractual con otra organización que pueda afectar tu participación en nuestras actividades?",
         "Adjunta tu hoja de vida y/o portafolio de experiencias en un solo archivo en formato PDF",
         "Nos encantaría ver un video corto de máximo 2 minutos donde compartas tu experiencia o metodología. Si lo deseas adjunta, el enlace.",
-        "La Institución Universitaria Esumer cumple con la normatividad vigente en materia de protección de datos. Los datos suministrados sólo serán utilizados para efectos del banco de talentos Esumer. Puedes ejercer en cualquier momento tus derechos de acceso, rectificación, supresión, portabilidad y oposición al tratamiento de tus datos mediante el correo electrónico: emprendimiento.investigacion@esumer.edu.co"
+        "La Institución Universitaria Esumer cumple con la normatividad vigente en materia de protección de datos. Los datos suministrados sólo serán utilizados para efectos del banco de talentos Esumer. Puedes ejercer en cualquier momento tus derechos de acceso, rectificación, supresión, portabilidad y oposición al tratamiento de tus datos mediante el correo electrónico: emprendimiento.investigacion@esumer.edu.co",
+        "¿En qué días y horas tienes mayor disponibilidad para actividades presenciales o virtuales?  [Sábado ]"
     ]
     
-    # Verificar que todas las columnas esperadas existan en el DataFrame
+    # Verificar que todas existan
     for col in columnas_esperadas:
         if col not in df.columns:
             raise KeyError(f"Falta la columna esperada: '{col}'")
     
-    # Obtener la conexión a la base de datos
     connection = get_db()
     if connection is None:
-        print("No se pudo conectar a la base de datos.")
-        return
+        return {"error": "No se pudo conectar a la base de datos."}
     
-    # Procesar cada fila del DataFrame y mapear a los campos del modelo Docente
+    # Contadores y lista para registros duplicados
+    inserted_count = 0
+    duplicate_count = 0
+    duplicate_emails = []
+    
+    # Función auxiliar para validar valores
+    def valida_valor(valor):
+        return valor if pd.notna(valor) else "No aplica"
+    
     for index, row in df.iterrows():
         try:
-            marca_temporal = row["Marca temporal"]
-            nombre_completo = row["¿Cuál es tu nombre completo?"]
-            correo_electronico = row["Correo electrónico que más revisas"]
-            numero_celular = row["Número de celular"]
-            otro_numero_contacto = row["¿Tienes otro número de contacto?"] if pd.notna(row["¿Tienes otro número de contacto?"]) else None
-            envio_whatsapp = row["¿Permites el envío de mensajes vía WhatsApp?"]
-            lugar_residencia = row["Lugar de residencia:"]
-            nivel_formacion = row["¿Cuál es tu último nivel de formación?"]
-            titulos_pregrado = row["Título(s) de pregrado obtenido(s)"]
-            titulos_posgrado = row["Título(s) de posgrado obtenido(s)"]
-            areas_especializacion = row["¿Cuál o cuáles son tus principales áreas de especialización o dónde te consideras el más teso(a)? Selecciona máximo cinco."]
-            resumen_experiencia = row["Compártenos un breve resumen de tu experiencia en formación, consultoría o talleres para emprendedor@s y empresari@s (máximo 3 líneas)."]
-            certificaciones = row["¿Tienes certificaciones o estudios relevantes para las áreas de especialización que elegiste?"]
-            disponibilidad_lunes = row["¿En qué días y horas tienes mayor disponibilidad para actividades presenciales o virtuales?  [Lunes]"]
-            disponibilidad_martes = row["¿En qué días y horas tienes mayor disponibilidad para actividades presenciales o virtuales?  [Martes]"]
-            disponibilidad_miercoles = row["¿En qué días y horas tienes mayor disponibilidad para actividades presenciales o virtuales?  [Miércoles ]"]
-            disponibilidad_jueves = row["¿En qué días y horas tienes mayor disponibilidad para actividades presenciales o virtuales?  [Jueves]"]
-            disponibilidad_sabado = row["¿En qué días y horas tienes mayor disponibilidad para actividades presenciales o virtuales?  [Sábado]"]
-            disponibilidad_viajar = row["¿Tienes disponibilidad para viajar a otros municipios/departamentos?"]
-            equipo_conexion_estable = row["¿Cuentas con equipo y conexión estable para sesiones virtuales? (Sí / No)"]
-            estilo_formador = row["¿Cómo describes tu estilo como formador(a) o consultor(a)?"]
-            metodologia = row["¿Qué metodología(s) utilizas(s) para asegurar la participación de los emprendedores y empresarios en tus sesiones?"]
-            casos_impacto = row["¿Podrías mencionar uno o dos casos o experiencias en la que hayas generado un impacto significativo en un grupo de emprendedores o empresarios?"]
-            restriccion_contractual = row["¿Tienes algún tipo de restricción contractual con otra organización que pueda afectar tu participación en nuestras actividades?"]
-            hoja_vida = row["Adjunta tu hoja de vida y/o portafolio de experiencias en un solo archivo en formato PDF"] if pd.notna(row["Adjunta tu hoja de vida y/o portafolio de experiencias en un solo archivo en formato PDF"]) else None
-            video_enlace = row["Nos encantaría ver un video corto de máximo 2 minutos donde compartas tu experiencia o metodología. Si lo deseas adjunta, el enlace."] if pd.notna(row["Nos encantaría ver un video corto de máximo 2 minutos donde compartas tu experiencia o metodología. Si lo deseas adjunta, el enlace."]) else None
-            aviso_proteccion_datos = True if str(row["La Institución Universitaria Esumer cumple con la normatividad vigente en materia de protección de datos. Los datos suministrados sólo serán utilizados para efectos del banco de talentos Esumer. Puedes ejercer en cualquier momento tus derechos de acceso, rectificación, supresión, portabilidad y oposición al tratamiento de tus datos mediante el correo electrónico: emprendimiento.investigacion@esumer.edu.co"]).strip().lower().startswith("he leído") else False
+            marca_temporal       = valida_valor(row["Marca temporal"])
+            nombre_completo      = valida_valor(row["¿Cuál es tu nombre completo?"])
+            correo_electronico   = valida_valor(row["Correo electrónico que más revisas"])
+            numero_celular       = valida_valor(row["Número de celular"])
+            otro_numero_contacto = valida_valor(row["¿Tienes otro número de contacto?"])
+            envio_whatsapp       = valida_valor(row["¿Permites el envío de mensajes vía WhatsApp?"])
+            lugar_residencia     = valida_valor(row["Lugar de residencia (Ciudad):"])
+            nivel_formacion      = valida_valor(row["¿Cuál es tu último nivel de formación?"])
+            titulos_pregrado     = valida_valor(row["Título(s) de pregrado obtenido(s)"])
+            titulos_posgrado     = valida_valor(row["Título(s) de posgrado obtenido(s)"])
+            areas_especializacion= valida_valor(row["¿Cuál o cuáles son tus principales áreas de especialización o dónde te consideras el más teso(a)? Selecciona máximo cinco."])
+            resumen_experiencia  = valida_valor(row["Compártenos un breve resumen de tu experiencia en formación, consultoría o talleres para emprendedor@s y empresari@s (máximo 3 líneas)."])
+            certificaciones      = valida_valor(row["¿Tienes certificaciones o estudios relevantes para las áreas de especialización que elegiste?"])
+            disponibilidad_lunes = valida_valor(row["¿En qué días y horas tienes mayor disponibilidad para actividades presenciales o virtuales?  [Lunes]"])
+            disponibilidad_martes= valida_valor(row["¿En qué días y horas tienes mayor disponibilidad para actividades presenciales o virtuales?  [Martes]"])
+            disponibilidad_miercoles = valida_valor(row["¿En qué días y horas tienes mayor disponibilidad para actividades presenciales o virtuales?  [Miércoles ]"])
+            disponibilidad_jueves= valida_valor(row["¿En qué días y horas tienes mayor disponibilidad para actividades presenciales o virtuales?  [Jueves]"])
+            disponibilidad_viernes= valida_valor(row["¿En qué días y horas tienes mayor disponibilidad para actividades presenciales o virtuales?  [Viernes]"])
+            disponibilidad_viajar= valida_valor(row["¿Tienes disponibilidad para viajar a otros municipios/departamentos?"])
+            equipo_conexion_estable = valida_valor(row["¿Cuentas con equipo y conexión estable para sesiones virtuales? (Sí / No)"])
+            estilo_formador      = valida_valor(row["¿Cómo describes tu estilo como formador(a) o consultor(a)?"])
+            metodologia          = valida_valor(row["¿Qué metodología(s) utilizas(s) para asegurar la participación de los emprendedores y empresarios en tus sesiones?"])
+            casos_impacto        = valida_valor(row["¿Podrías mencionar uno o dos casos o experiencias en la que hayas generado un impacto significativo en un grupo de emprendedores o empresarios?"])
+            restriccion_contractual = valida_valor(row["¿Tienes algún tipo de restricción contractual con otra organización que pueda afectar tu participación en nuestras actividades?"])
+            hoja_vida            = valida_valor(row["Adjunta tu hoja de vida y/o portafolio de experiencias en un solo archivo en formato PDF"])
+            video_enlace         = valida_valor(row["Nos encantaría ver un video corto de máximo 2 minutos donde compartas tu experiencia o metodología. Si lo deseas adjunta, el enlace."])
+            
+            aviso_raw = valida_valor(row["La Institución Universitaria Esumer cumple con la normatividad vigente en materia de protección de datos. Los datos suministrados sólo serán utilizados para efectos del banco de talentos Esumer. Puedes ejercer en cualquier momento tus derechos de acceso, rectificación, supresión, portabilidad y oposición al tratamiento de tus datos mediante el correo electrónico: emprendimiento.investigacion@esumer.edu.co"])
+            if aviso_raw == "No aplica":
+                aviso_proteccion_datos = "No aplica"
+            else:
+                aviso_proteccion_datos = "Sí" if str(aviso_raw).strip().lower().startswith("he leído") else "No"
+            
+            disponibilidad_sabado = valida_valor(row["¿En qué días y horas tienes mayor disponibilidad para actividades presenciales o virtuales?  [Sábado ]"])
 
             docente_data = (
                 marca_temporal, nombre_completo, correo_electronico, numero_celular,
                 otro_numero_contacto, envio_whatsapp, lugar_residencia, nivel_formacion,
                 titulos_pregrado, titulos_posgrado, areas_especializacion, resumen_experiencia,
                 certificaciones, disponibilidad_lunes, disponibilidad_martes, disponibilidad_miercoles,
-                disponibilidad_jueves, disponibilidad_sabado, disponibilidad_viajar, equipo_conexion_estable,
-                estilo_formador, metodologia, casos_impacto, restriccion_contractual, hoja_vida, video_enlace,
-                aviso_proteccion_datos
+                disponibilidad_jueves, disponibilidad_viernes, disponibilidad_viajar, equipo_conexion_estable,
+                estilo_formador, metodologia, casos_impacto, restriccion_contractual,
+                hoja_vida, video_enlace, aviso_proteccion_datos, disponibilidad_sabado
             )
+
+            # Verificar si ya existe un registro con el mismo correo en la BD
+            check_cursor = connection.cursor()
+            check_query = "SELECT COUNT(*) FROM docentes WHERE correo_electronico = %s"
+            check_cursor.execute(check_query, (correo_electronico,))
+            result = check_cursor.fetchone()
+            check_cursor.close()
+
+            if result and result[0] > 0:
+                duplicate_count += 1
+                duplicate_emails.append(correo_electronico)
+                print(f"El correo {correo_electronico} ya se encuentra registrado. Saltando esta fila.")
+                continue
+
             await insert_docente(connection, docente_data)
+            inserted_count += 1
         except KeyError as e:
             print(f"Error procesando fila {index}: {e}")
-    connection.close()
 
+    connection.close()
+    return {
+        "inserted": inserted_count,
+        "duplicates": duplicate_count,
+        "duplicate_emails": duplicate_emails
+    }
+
+# Endpoint de carga de archivo
 @app.post("/uploadfile/")
 async def upload_file(file: UploadFile = File(...)):
-    await process_excel(file)
-    return {"success": True, "message": "Archivo procesado y datos guardados en la base de datos."}
+    result = await process_excel(file)
+    # Mensaje base de registros insertados
+    message = f"Se insertaron {result['inserted']} registros correctamente."
+    
+    # Si existen duplicados, se agrega un mensaje de error con los correos
+    if result["duplicates"] > 0:
+        duplicate_message = (
+            "Error: Los siguientes correos ya se encuentran registrados:<br>" +
+            "<br>".join(result["duplicate_emails"])
+        )
+        message += "<br>" + duplicate_message
+
+    return {"success": True, "message": message}
 
 
 
@@ -199,7 +244,7 @@ def get_teachers():
         SELECT id, marca_temporal, nombre_completo, correo_electronico, numero_celular, otro_numero_contacto,
         envio_whatsapp, lugar_residencia, nivel_formacion, titulos_pregrado, areas_especializacion, resumen_experiencia, 
         titulos_posgrado, certificaciones, disponibilidad_lunes, disponibilidad_martes, disponibilidad_miercoles, 
-        disponibilidad_jueves, disponibilidad_sabado, disponibilidad_viajar, equipo_conexion_estable, estilo_formador, 
+        disponibilidad_jueves,disponibilidad_viernes, disponibilidad_sabado, disponibilidad_viajar, equipo_conexion_estable, estilo_formador, 
         metodologia, casos_impacto, restriccion_contractual, hoja_vida, video_enlace, aviso_proteccion_datos
         FROM docentes
     """
@@ -221,6 +266,7 @@ ALLOWED_FILTERS = {
     "disponibilidad_martes",
     "disponibilidad_miercoles",
     "disponibilidad_jueves",
+    "disponibilidad_viernes",
     "disponibilidad_sabado",
     "disponibilidad_viajar",
     "equipo_conexion_estable",
