@@ -10,7 +10,7 @@ def get_db():
              host="127.0.0.1",
              user="root",
              password="",
-             database="db_infodocentes"
+             database="db_docentes"
          )
      except Error as e:
          print(f"Error: '{e}'")

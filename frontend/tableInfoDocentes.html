@@ -12,21 +12,97 @@
   <link rel="stylesheet" href="static/css/styleDocente.css" />
 
   <style>
-    td {
-      vertical-align: middle;
-      /* Asegura alineación uniforme */
-      text-align: center;
-      /* Centra el contenido de la celda */
+    /* ---------- Modal de Notas ---------- */
+    .modal-note {
+      display: none;
+      /* Oculto por defecto */
+      position: fixed;
+      z-index: 1100;
+      /* Superior para que tenga prioridad */
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      background-color: rgba(0, 0, 0, 0.5);
+      animation: noteFadeIn 0.3s;
     }
 
-    .action-btn {
-      display: inline-flex;
-      /* Evita que el botón cambie de tamaño */
-      align-items: center;
-      justify-content: center;
-      padding: 6px 10px;
+    .modal-note-content {
+      background-color: #fff;
+      margin: 10% auto;
+      padding: 20px;
+      border-radius: 8px;
+      width: 90%;
+      max-width: 400px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+      animation: noteSlideIn 0.3s;
+    }
+
+    .modal-note-close {
+      color: #aaa;
+      float: right;
+      font-size: 24px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .modal-note-close:hover {
+      color: #000;
+    }
+
+    /* ---------- Estilos del Formulario del Modal de Notas ---------- */
+    #noteForm label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: bold;
+    }
+
+    #noteForm select {
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 15px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+
+    #noteForm button {
+      background-color: #007bff;
+      color: #fff;
+      border: none;
+      padding: 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      width: 100%;
+    }
+
+    #noteForm button:hover {
+      background-color: #0056b3;
+    }
+
+    /* ---------- Animaciones ---------- */
+    @keyframes noteFadeIn {
+      from {
+        opacity: 0;
+      }
+
+      to {
+        opacity: 1;
+      }
+    }
+
+    @keyframes noteSlideIn {
+      from {
+        transform: translateY(-30px);
+      }
+
+      to {
+        transform: translateY(0);
+      }
     }
   </style>
+
+
 </head>
 
 <body>
@@ -92,7 +168,9 @@
           <th>Correo Electrónico</th>
           <th>Teléfono</th>
           <th>Nivel de formación</th>
-          <th>Ver información completa</th>
+          <th>Acciones</th>
+          <th>Calificación del docente</th>
+
         </tr>
       </thead>
       <tbody>
@@ -117,7 +195,6 @@
       <!-- Mensaje de éxito o error -->
       <div id="message" style="margin-top: 10px"></div>
     </div>
-    <script src="upload.js"></script>
 
     <!-- Modal de detalle del docente con pestañas -->
     <div class="modal fade" id="teacherDetailModal" tabindex="-1" aria-labelledby="teacherDetailModalLabel"
@@ -173,6 +250,26 @@
       </div>
     </div>
 
+    <!-- Modal para Asignar Nota -->
+    <div id="noteModal" class="modal-note">
+      <div class="modal-note-content">
+        <span class="modal-note-close" onclick="closeNoteModal()">&times;</span>
+        <h2>Asignar Nota</h2>
+        <form id="noteForm">
+          <label for="noteSelect">Selecciona una nota:</label>
+          <select id="noteSelect" name="nota" required>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+          </select>
+          <button type="submit">Guardar Nota</button>
+        </form>
+      </div>
+    </div>
+
+
 
     <script>
       let currentPage = 1;
@@ -223,10 +320,15 @@
                   <td>${docente.numero_celular}</td>
                   <td>${docente.nivel_formacion}</td>
                   <td class="action-cell">
-                  <button class="action-btn view-btn" onclick="viewDocente(${docente.id})">
+                  <button class="action-btn add-note-btn" onclick="openNoteModal('${docente.identificacion}')">
+                    <i class="fas fa-plus"></i> Agregar Nota
+                  </button>
+                  <button class="action-btn view-btn" onclick="viewDocente('${docente.identificacion}')">
                     <i class="fas fa-eye"></i> <!-- Cambio de ícono de editar a ver -->
                   </button>
                   </td>
+                  <td>${docente.promedio}</td>
+
               `;
           tbody.appendChild(row);
         });
@@ -287,7 +389,7 @@
         <td>${docente.numero_celular}</td>
         <td>${docente.nivel_formacion}</td>
         <td class="text-center"> 
-          <button class="action-btn view-btn" onclick="viewDocente(${docente.id})">
+          <button class="action-btn view-btn" onclick="viewDocente(${docente.identificacion})">
             <i class="fas fa-eye"></i>
           </button>
         </td>
@@ -505,7 +607,7 @@
       <td>${teacher.numero_celular}</td>
       <td>${teacher.nivel_formacion}</td>
       <td class="action-cell">
-        <button class="action-btn view-btn" onclick="viewDocente(${teacher.id})">
+        <button class="action-btn view-btn" onclick="viewDocente(${teacher.identificacion})">
           <i class="fas fa-eye"></i>
         </button>
       </td>
@@ -529,6 +631,8 @@
             // Contenido para la pestaña de Datos Básicos
             const fecha = new Date(data.marca_temporal).toISOString().split("T")[0];
             const basicHTML = `
+              <p><strong>Numero de documento:</strong> ${validateData(data.identificacion)}</p>
+
               <p><strong>Nombre Completo:</strong> ${validateData(data.nombre_completo)}</p>
               <p><strong>Fecha de registro formulario:</strong> ${validateData(fecha)}</p>
           `;
@@ -588,6 +692,70 @@
           });
       }
 
+      // Función para abrir el modal de notas y asignar la identificación del docente
+      function openNoteModal(teacherIdentificacion) {
+        const modal = document.getElementById("noteModal");
+        modal.style.display = "block";
+
+        const form = document.getElementById("noteForm");
+        form.onsubmit = function (event) {
+          event.preventDefault();
+          submitNote(teacherIdentificacion);
+        };
+      }
+
+      // Función para cerrar el modal de notas
+      function closeNoteModal() {
+        const modal = document.getElementById("noteModal");
+        modal.style.display = "none";
+      }
+
+      // Función para enviar la nota al backend
+      async function submitNote(teacherIdentificacion) {
+        const select = document.getElementById("noteSelect");
+        const nota = parseInt(select.value);
+
+        try {
+          const response = await fetch(`/docentes/${teacherIdentificacion}/nota`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ nota: nota })
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            alert("Error al registrar la nota: " + (errorData.detail || "Error desconocido"));
+            return;
+          }
+
+          const data = await response.json();
+          alert("Nota registrada con éxito. Promedio actual: " + data.promedio_actual);
+          closeNoteModal();
+
+          // Actualizar la lista de docentes si está definida la función renderDocentes
+          if (typeof renderDocentes === "function" && typeof currentPage !== "undefined") {
+            renderDocentes(currentPage);
+          }
+        } catch (error) {
+          console.error("Error al registrar la nota:", error);
+          alert("Error al registrar la nota.");
+        }
+      }
+
+      // Cerrar el modal si se hace clic fuera de él
+      window.onclick = function (event) {
+        const modal = document.getElementById("noteModal");
+        if (event.target === modal) {
+          closeNoteModal();
+        }
+      };
+
+
+
+
+
       // Inicializar la tabla de docentes
       renderDocentes(currentPage);
     </script>
@@ -595,6 +763,8 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="upload.js"></script>
+
 </body>
 
 </html>

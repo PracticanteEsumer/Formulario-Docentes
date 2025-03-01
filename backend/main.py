@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, Form, HTTPException,Response, UploadFile,Query
+from fastapi import FastAPI, File, Form, HTTPException,Response, UploadFile,Query,Depends
 from fastapi.responses import HTMLResponse,RedirectResponse,JSONResponse    
 from fastapi.staticfiles import StaticFiles
 import os
@@ -18,7 +18,7 @@ users={
     "admin1": {"password": "admin1", "role": "admin"},
     "admin2": {"password": "admin2", "role": "viewer_downloader"},
     "admin3": {"password": "admin3", "role": "viewer"}
-}
+}   
 
 
 # Montar la carpeta estática para que FastAPI reconozca los archivos de estilo CSS
@@ -28,8 +28,8 @@ app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__
 app.mount("/CarpetaInfo", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "../CarpetaInfo")), name="CarpetaInfo")
 
 
-# Definir el modelo Docente
 class Docente(BaseModel):
+    identificacion: str
     marca_temporal: str
     nombre_completo: str
     correo_electronico: str
@@ -58,6 +58,12 @@ class Docente(BaseModel):
     video_enlace: Optional[str] = None
     aviso_proteccion_datos: str
     disponibilidad_sabado: str
+    
+    # Nuevos campos para notas
+    puntuacion_total: int   # Almacenará la suma de todas las notas
+    total_usuarios: int   # Número de usuarios que han registrado una nota
+    promedio: str  # Promedio de las notas registradas
+
 
 
 
@@ -66,7 +72,7 @@ async def insert_docente(connection, docente_data):
     cursor = connection.cursor()
     query = """
         INSERT INTO docentes (
-            marca_temporal, nombre_completo, correo_electronico, numero_celular,
+            identificacion, marca_temporal, nombre_completo, correo_electronico, numero_celular,
             otro_numero_contacto, envio_whatsapp, lugar_residencia, nivel_formacion,
             titulos_pregrado, titulos_posgrado, areas_especializacion, resumen_experiencia,
             certificaciones, disponibilidad_lunes, disponibilidad_martes, disponibilidad_miercoles,
@@ -74,7 +80,7 @@ async def insert_docente(connection, docente_data):
             estilo_formador, metodologia, casos_impacto, restriccion_contractual, hoja_vida, video_enlace,
             aviso_proteccion_datos,disponibilidad_sabado
         ) VALUES (
-            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+            %s,%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
         )
     """
     try:
@@ -122,7 +128,9 @@ async def process_excel(file: UploadFile) -> dict:
         "Adjunta tu hoja de vida y/o portafolio de experiencias en un solo archivo en formato PDF",
         "Nos encantaría ver un video corto de máximo 2 minutos donde compartas tu experiencia o metodología. Si lo deseas adjunta, el enlace.",
         "La Institución Universitaria Esumer cumple con la normatividad vigente en materia de protección de datos. Los datos suministrados sólo serán utilizados para efectos del banco de talentos Esumer. Puedes ejercer en cualquier momento tus derechos de acceso, rectificación, supresión, portabilidad y oposición al tratamiento de tus datos mediante el correo electrónico: emprendimiento.investigacion@esumer.edu.co",
-        "¿En qué días y horas tienes mayor disponibilidad para actividades presenciales o virtuales?  [Sábado ]"
+        "¿En qué días y horas tienes mayor disponibilidad para actividades presenciales o virtuales?  [Sábado ]",
+        "Numero de documento de identidad"
+
     ]
     
     # Verificar que todas existan
@@ -171,6 +179,7 @@ async def process_excel(file: UploadFile) -> dict:
             restriccion_contractual = valida_valor(row["¿Tienes algún tipo de restricción contractual con otra organización que pueda afectar tu participación en nuestras actividades?"])
             hoja_vida            = valida_valor(row["Adjunta tu hoja de vida y/o portafolio de experiencias en un solo archivo en formato PDF"])
             video_enlace         = valida_valor(row["Nos encantaría ver un video corto de máximo 2 minutos donde compartas tu experiencia o metodología. Si lo deseas adjunta, el enlace."])
+            identificacion       = valida_valor(row["Numero de documento de identidad"])
             
             aviso_raw = valida_valor(row["La Institución Universitaria Esumer cumple con la normatividad vigente en materia de protección de datos. Los datos suministrados sólo serán utilizados para efectos del banco de talentos Esumer. Puedes ejercer en cualquier momento tus derechos de acceso, rectificación, supresión, portabilidad y oposición al tratamiento de tus datos mediante el correo electrónico: emprendimiento.investigacion@esumer.edu.co"])
             if aviso_raw == "No aplica":
@@ -181,7 +190,7 @@ async def process_excel(file: UploadFile) -> dict:
             disponibilidad_sabado = valida_valor(row["¿En qué días y horas tienes mayor disponibilidad para actividades presenciales o virtuales?  [Sábado ]"])
 
             docente_data = (
-                marca_temporal, nombre_completo, correo_electronico, numero_celular,
+                identificacion,marca_temporal, nombre_completo, correo_electronico, numero_celular,
                 otro_numero_contacto, envio_whatsapp, lugar_residencia, nivel_formacion,
                 titulos_pregrado, titulos_posgrado, areas_especializacion, resumen_experiencia,
                 certificaciones, disponibilidad_lunes, disponibilidad_martes, disponibilidad_miercoles,
@@ -240,12 +249,12 @@ def get_teachers():
     cursor = connection.cursor(dictionary=True)
 
     # Consulta para obtener los usuarios
-    query = """
-        SELECT id, marca_temporal, nombre_completo, correo_electronico, numero_celular, otro_numero_contacto,
+    query = """ 
+        SELECT identificacion, marca_temporal, nombre_completo, correo_electronico, numero_celular, otro_numero_contacto,
         envio_whatsapp, lugar_residencia, nivel_formacion, titulos_pregrado, areas_especializacion, resumen_experiencia, 
         titulos_posgrado, certificaciones, disponibilidad_lunes, disponibilidad_martes, disponibilidad_miercoles, 
-        disponibilidad_jueves,disponibilidad_viernes, disponibilidad_sabado, disponibilidad_viajar, equipo_conexion_estable, estilo_formador, 
-        metodologia, casos_impacto, restriccion_contractual, hoja_vida, video_enlace, aviso_proteccion_datos
+        disponibilidad_jueves, disponibilidad_viernes, disponibilidad_sabado, disponibilidad_viajar, equipo_conexion_estable, estilo_formador, 
+        metodologia, casos_impacto, restriccion_contractual, hoja_vida, video_enlace, aviso_proteccion_datos, promedio
         FROM docentes
     """
     cursor.execute(query)
@@ -255,8 +264,11 @@ def get_teachers():
     cursor.close()
     connection.close()
 
-    return docentes
+    return docentes  # Sin la coma
 
+
+
+# Comentario de segurity
 # Lista de columnas permitidas para el filtrado
 ALLOWED_FILTERS = {
     "lugar_residencia",
@@ -305,11 +317,11 @@ def filter_teachers(field: str = Query(...), value: str = Query(...)):
     cursor = connection.cursor(dictionary=True)
     
     query = f"""
-        SELECT id, marca_temporal, nombre_completo, correo_electronico, numero_celular, otro_numero_contacto,
+        SELECT identificacion, marca_temporal, nombre_completo, correo_electronico, numero_celular, otro_numero_contacto,
         envio_whatsapp, lugar_residencia, nivel_formacion, titulos_pregrado, areas_especializacion, resumen_experiencia, 
         titulos_posgrado, certificaciones, disponibilidad_lunes, disponibilidad_martes, disponibilidad_miercoles, 
         disponibilidad_jueves, disponibilidad_sabado, disponibilidad_viajar, equipo_conexion_estable, estilo_formador, 
-        metodologia, casos_impacto, restriccion_contractual, hoja_vida, video_enlace, aviso_proteccion_datos
+        metodologia, casos_impacto, restriccion_contractual, hoja_vida, video_enlace, aviso_proteccion_datos,promedio
         FROM docentes
         WHERE {field} LIKE %s
     """
@@ -323,17 +335,17 @@ def filter_teachers(field: str = Query(...), value: str = Query(...)):
 
 # Y finalmente el endpoint para el detalle del docente
 @app.get("/teachers/{teacher_id}")
-def get_teacher_detail(teacher_id: int):
+def get_teacher_detail(teacher_id: str):
     connection = get_db()
     cursor = connection.cursor(dictionary=True)
     query = """
-        SELECT id, marca_temporal, nombre_completo, correo_electronico, numero_celular, otro_numero_contacto,
+        SELECT identificacion, marca_temporal, nombre_completo, correo_electronico, numero_celular, otro_numero_contacto,
                envio_whatsapp, lugar_residencia, nivel_formacion, titulos_pregrado, areas_especializacion, resumen_experiencia, 
                titulos_posgrado, certificaciones, disponibilidad_lunes, disponibilidad_martes, disponibilidad_miercoles, 
                disponibilidad_jueves, disponibilidad_sabado, disponibilidad_viajar, equipo_conexion_estable, estilo_formador, 
-               metodologia, casos_impacto, restriccion_contractual, hoja_vida, video_enlace, aviso_proteccion_datos
+               metodologia, casos_impacto, restriccion_contractual, hoja_vida, video_enlace, aviso_proteccion_datos, promedio
         FROM docentes
-        WHERE id = %s
+        WHERE identificacion = %s
     """
     cursor.execute(query, (teacher_id,))
     teacher = cursor.fetchone()
@@ -367,6 +379,7 @@ async def list_docentes():
                 <td>{docente['correo_electronico']}</td>
                 <td>{docente['numero_celular']}</td>
                 <td>{docente['nivel_formacion']}</td>
+                <td>{docente['promedio']}</td>
             </tr>
         """
     
@@ -387,7 +400,7 @@ async def list_docentes_paginated(page: int = Query(1, alias="page"), per_page: 
 
     # Consulta SQL para obtener el total de usuarios y la paginación
     query = """
-        SELECT id, nombre_completo, correo_electronico, numero_celular,otro_numero_contacto,nivel_formacion,areas_especializacion
+        SELECT identificacion, nombre_completo, correo_electronico, numero_celular,otro_numero_contacto,nivel_formacion,areas_especializacion
         FROM docentes
         LIMIT %s OFFSET %s
     """
@@ -427,7 +440,7 @@ async def search_docentes(query: str = Query(..., alias="query")):
     cursor = connection.cursor(dictionary=True)
 
     search_query = """
-        SELECT id, nombre_completo, correo_electronico, numero_celular, otro_numero_contacto, nivel_formacion, areas_especializacion
+        SELECT identificacion, nombre_completo, correo_electronico, numero_celular, otro_numero_contacto, nivel_formacion, areas_especializacion
         FROM docentes
         WHERE LOWER(nombre_completo) LIKE %s
            OR LOWER(correo_electronico) LIKE %s
@@ -446,6 +459,65 @@ async def search_docentes(query: str = Query(..., alias="query")):
 
     return {"docentes": docentes}
 
+
+# Modelo para recibir la nota (entero de 1 a 5)
+class NotaModel(BaseModel):
+    nota: int
+
+# Función asíncrona para registrar la nota y actualizar el docente
+async def registrar_nota(connection, docente_identificacion: str, nueva_nota: int):
+    cursor = connection.cursor()
+    
+    # Consultar los valores actuales del docente usando 'identificacion'
+    query_select = "SELECT puntuacion_total, total_usuarios FROM docentes WHERE identificacion = %s"
+    cursor.execute(query_select, (docente_identificacion,))
+    row = cursor.fetchone()
+
+    if row is None:
+        cursor.close()
+        raise Exception(f"Docente con identificación {docente_identificacion} no encontrado")
+    
+    puntuacion_total, total_usuarios = row
+    
+    # Actualizamos la puntuación total y el contador de usuarios
+    nueva_puntuacion_total = puntuacion_total + nueva_nota
+    nuevo_total_usuarios = total_usuarios + 1
+    nuevo_promedio = nueva_puntuacion_total / nuevo_total_usuarios
+    
+    # Convertir el promedio a cadena (por ejemplo, con dos decimales)
+    promedio_str = f"{nuevo_promedio:.2f}"
+    
+    # Actualizar el registro en la base de datos usando 'identificacion'
+    query_update = """
+        UPDATE docentes SET 
+            puntuacion_total = %s, 
+            total_usuarios = %s, 
+            promedio = %s
+        WHERE identificacion = %s
+    """
+    try:
+        cursor.execute(query_update, (nueva_puntuacion_total, nuevo_total_usuarios, promedio_str, docente_identificacion))
+        connection.commit()
+    except Exception as e:
+        connection.rollback()
+        raise Exception(f"Error al actualizar docente: {str(e)}")
+    finally:
+        cursor.close()
+    
+    return {"mensaje": "Nota registrada exitosamente", "promedio_actual": promedio_str}
+
+# Endpoint para registrar la nota
+@app.post("/docentes/{docente_identificacion}/nota")
+async def registrar_nota_endpoint(
+    docente_identificacion: str,
+    nota_model: NotaModel,
+    connection = Depends(get_db)
+):
+    try:
+        resultado = await registrar_nota(connection, docente_identificacion, nota_model.nota)
+        return resultado
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 
@@ -478,15 +550,6 @@ async def login(strUsuario: str = Form(...), strContrasenna: str = Form(...)):
     else:
         # Si la validación falla, lanzar un error 401
         raise HTTPException(status_code=401, detail="Credenciales incorrectas")
-
-# Vista para permisos de administrador
-# @app.get("/admin")
-# async def view_admin():
-#     # Cargar la página HTML para el administrador
-#     admin_page_path = os.path.join(os.path.dirname(__file__), "../frontend/tableInfoDocentes.html")
-#     with open(admin_page_path, "r", encoding="utf-8") as f:
-#         return HTMLResponse(content=f.read(), status_code=200)
-
 
 @app.post("/logout")
 async def logout(response: Response):
