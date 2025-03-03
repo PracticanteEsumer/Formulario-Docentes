@@ -169,7 +169,7 @@
           <th>Teléfono</th>
           <th>Nivel de formación</th>
           <th>Acciones</th>
-          <th>Calificación del docente</th>
+          <th>Valoración</th>
 
         </tr>
       </thead>
@@ -306,43 +306,73 @@
         }
       }
 
+      // Función que convierte el promedio decimal en una representación de estrellas
+      function getStarRating(ratingDecimal) {
+        // Convertir el valor a número (puede venir como string o number)
+        const rating = parseFloat(ratingDecimal);
+
+        // Calcular las estrellas llenas, media estrella y vacías
+        const fullStars = Math.floor(rating);
+        const halfStars = (rating - fullStars) >= 0.5 ? 1 : 0;
+        const emptyStars = 5 - fullStars - halfStars;
+
+        // Íconos de FontAwesome:
+        // 'fas fa-star' para estrella llena,
+        // 'fas fa-star-half-alt' para media estrella,
+        // 'far fa-star' para estrella vacía.
+        let starsHTML = "";
+        for (let i = 0; i < fullStars; i++) {
+          starsHTML += '<i class="fas fa-star"></i>';
+        }
+        if (halfStars) {
+          starsHTML += '<i class="fas fa-star-half-alt"></i>';
+        }
+        for (let i = 0; i < emptyStars; i++) {
+          starsHTML += '<i class="far fa-star"></i>';
+        }
+        return starsHTML;
+      }
+
+      // Función que renderiza los docentes en la tabla, mostrando el promedio como estrellas
       async function renderDocentes(page) {
         const docentes = await fetchDocentes(page);
         const tbody = document.querySelector("#docentes-table tbody");
         tbody.innerHTML = "";
 
         docentes.forEach((docente) => {
+          // Validar el promedio; si no está definido, asignar "0.00"
+          const promedio = docente.promedio !== undefined && docente.promedio !== null
+            ? docente.promedio
+            : "0.00";
+          // Convertir el promedio a una representación visual de estrellas
+          const starRating = getStarRating(promedio);
+
           const row = document.createElement("tr");
           row.innerHTML = `
-
-                  <td>${docente.nombre_completo}</td>
-                  <td>${docente.correo_electronico}</td>
-                  <td>${docente.numero_celular}</td>
-                  <td>${docente.nivel_formacion}</td>
-                  <td class="action-cell">
-                  <button class="action-btn add-note-btn" onclick="openNoteModal('${docente.identificacion}')">
+            <td>${docente.nombre_completo}</td>
+            <td>${docente.correo_electronico}</td>
+            <td>${docente.numero_celular}</td>
+            <td>${docente.nivel_formacion}</td>
+            <td class="action-cell">
+                <button class="action-btn view-btn" onclick="viewDocente('${docente.identificacion}')">
+                    <i class="fas fa-eye"></i>
+                </button>
+                <button class="action-btn add-note-btn" onclick="openNoteModal('${docente.identificacion}')">
                     <i class="fas fa-plus"></i> Agregar Nota
-                  </button>
-                  <button class="action-btn view-btn" onclick="viewDocente('${docente.identificacion}')">
-                    <i class="fas fa-eye"></i> <!-- Cambio de ícono de editar a ver -->
-                  </button>
-                  </td>
-                  <td>${docente.promedio}</td>
+                </button>
+                
+            </td>
+            <td class="text-center">${starRating}</td>
 
-              `;
+        `;
           tbody.appendChild(row);
         });
 
-        // Actualizar la información de la página
-        document.getElementById(
-          "page-info"
-        ).textContent = `Página ${currentPage} de ${totalPages}`;
-
-        // Deshabilitar botones de página según sea necesario
+        document.getElementById("page-info").textContent = `Página ${currentPage} de ${totalPages}`;
         document.getElementById("prev-page").disabled = currentPage === 1;
-        document.getElementById("next-page").disabled =
-          currentPage === totalPages;
+        document.getElementById("next-page").disabled = currentPage === totalPages;
       }
+
 
       function changePage(direction) {
         if (
@@ -362,11 +392,34 @@
         }
       };
 
+      // Función auxiliar para convertir un promedio decimal a estrellas
+      function getStarRating(ratingDecimal) {
+        const rating = parseFloat(ratingDecimal);
+        if (isNaN(rating)) return "N/A"; // Retorna "N/A" si el rating no es un número válido
+
+        const fullStars = Math.floor(rating);
+        const halfStars = (rating - fullStars) >= 0.5 ? 1 : 0;
+        const emptyStars = 5 - fullStars - halfStars;
+
+        let starsHTML = "";
+        for (let i = 0; i < fullStars; i++) {
+          starsHTML += '<i class="fas fa-star"></i>';
+        }
+        if (halfStars) {
+          starsHTML += '<i class="fas fa-star-half-alt"></i>';
+        }
+        for (let i = 0; i < emptyStars; i++) {
+          starsHTML += '<i class="far fa-star"></i>';
+        }
+        return starsHTML;
+      }
+
       async function searchDocentes() {
         const query = document.getElementById("search-input").value.toLowerCase();
 
+        // Si el input está vacío, se renderiza la paginación normal
         if (query.trim() === "") {
-          return renderDocentes(currentPage); // Si el input está vacío, muestra la paginación normal
+          return renderDocentes(currentPage);
         }
 
         try {
@@ -382,24 +435,33 @@
           data.docentes.forEach((docente) => {
             const row = document.createElement("tr");
 
-            // Mantener las clases de la celda para evitar cambios en la alineación
+            // Convertir el promedio a estrellas
+            const starRating = getStarRating(docente.promedio);
+
+            // Generar la fila, incluyendo el ranking en estrellas
             row.innerHTML = `
-        <td>${docente.nombre_completo}</td>
-        <td>${docente.correo_electronico}</td>
-        <td>${docente.numero_celular}</td>
-        <td>${docente.nivel_formacion}</td>
-        <td class="text-center"> 
-          <button class="action-btn view-btn" onclick="viewDocente(${docente.identificacion})">
-            <i class="fas fa-eye"></i>
-          </button>
-        </td>
-      `;
+                <td>${docente.nombre_completo}</td>
+            <td>${docente.correo_electronico}</td>
+            <td>${docente.numero_celular}</td>
+            <td>${docente.nivel_formacion}</td>
+            <td class="action-cell">
+                <button class="action-btn view-btn" onclick="viewDocente('${docente.identificacion}')">
+                    <i class="fas fa-eye"></i>
+                </button>
+                <button class="action-btn add-note-btn" onclick="openNoteModal('${docente.identificacion}')">
+                    <i class="fas fa-plus"></i> Agregar Nota
+                </button>
+                
+            </td>
+            <td class="text-center">${starRating}</td>
+
+            `;
 
             tbody.appendChild(row);
           });
 
-          // Mostrar que son resultados de búsqueda
-          document.getElementById("page-info").textContent = `Resultados de búsqueda`;
+          // Indicar que se muestran resultados de búsqueda y deshabilitar la paginación
+          document.getElementById("page-info").textContent = "Resultados de búsqueda";
           document.getElementById("prev-page").disabled = true;
           document.getElementById("next-page").disabled = true;
         } catch (error) {
@@ -587,10 +649,11 @@
         tbody.innerHTML = ""; // Limpiar filas previas
 
         if (data.length === 0) {
-          // Si no hay resultados, mostrar una fila con un mensaje
+          // Si no hay resultados, mostrar una fila con un mensaje.
+          // Se ajusta el colspan para incluir la columna de ranking.
           const row = document.createElement("tr");
           const cell = document.createElement("td");
-          cell.colSpan = 5;
+          cell.colSpan = 6;
           cell.style.textAlign = "center";
           cell.textContent = "No se encontraron resultados.";
           row.appendChild(cell);
@@ -601,17 +664,27 @@
         // Recorrer los docentes filtrados y agregarlos a la tabla
         data.forEach((teacher) => {
           const row = document.createElement("tr");
+
+          // Convertir el promedio a estrellas. Asegúrate de que 'teacher.promedio'
+          // venga definido en el objeto recibido desde el backend.
+          const starRating = getStarRating(teacher.promedio);
+
           row.innerHTML = `
-      <td>${teacher.nombre_completo}</td>
-      <td>${teacher.correo_electronico}</td>
-      <td>${teacher.numero_celular}</td>
-      <td>${teacher.nivel_formacion}</td>
-      <td class="action-cell">
-        <button class="action-btn view-btn" onclick="viewDocente(${teacher.identificacion})">
-          <i class="fas fa-eye"></i>
-        </button>
-      </td>
-    `;
+            <td>${teacher.nombre_completo}</td>
+            <td>${teacher.correo_electronico}</td>
+            <td>${teacher.numero_celular}</td>
+            <td>${teacher.nivel_formacion}</td>
+            <td class="action-cell">
+                <button class="action-btn view-btn" onclick="viewDocente('${teacher.identificacion}')">
+                    <i class="fas fa-eye"></i>
+                </button>
+                <button class="action-btn add-note-btn" onclick="openNoteModal('${teacher.identificacion}')">
+                    <i class="fas fa-plus"></i> Agregar Nota
+                </button>
+                
+            </td>
+            <td class="text-center">${starRating}</td>
+        `;
           tbody.appendChild(row);
         });
       }
@@ -763,7 +836,6 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script src="upload.js"></script>
 
 </body>
 

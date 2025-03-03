@@ -9,6 +9,7 @@ from mysql.connector import Error
 from typing import Optional
 from pydantic import BaseModel
 from io import BytesIO
+from decimal import Decimal, ROUND_HALF_UP
 
 # Inicializar la API
 app = FastAPI()
@@ -268,6 +269,58 @@ def get_teachers():
 
 
 
+def get_teachers_with_rating(user_id: str):
+    connection = get_db()
+    cursor = connection.cursor(dictionary=True)
+
+    query = """ 
+        SELECT 
+            d.identificacion, 
+            d.marca_temporal, 
+            d.nombre_completo, 
+            d.correo_electronico, 
+            d.numero_celular, 
+            d.otro_numero_contacto,
+            d.envio_whatsapp, 
+            d.lugar_residencia, 
+            d.nivel_formacion, 
+            d.titulos_pregrado, 
+            d.areas_especializacion, 
+            d.resumen_experiencia, 
+            d.titulos_posgrado, 
+            d.certificaciones, 
+            d.disponibilidad_lunes, 
+            d.disponibilidad_martes, 
+            d.disponibilidad_miercoles, 
+            d.disponibilidad_jueves, 
+            d.disponibilidad_viernes, 
+            d.disponibilidad_sabado, 
+            d.disponibilidad_viajar, 
+            d.equipo_conexion_estable, 
+            d.estilo_formador, 
+            d.metodologia, 
+            d.casos_impacto, 
+            d.restriccion_contractual, 
+            d.hoja_vida, 
+            d.video_enlace, 
+            d.aviso_proteccion_datos, 
+            d.promedio,
+            CASE WHEN c.user_id IS NOT NULL THEN TRUE ELSE FALSE END AS ya_califico
+        FROM docentes d
+        LEFT JOIN calificaciones c 
+            ON d.identificacion = c.docente_identificacion AND c.user_id = %s
+    """
+    
+    cursor.execute(query, (user_id,))
+    docentes = cursor.fetchall()
+    cursor.close()
+    connection.close()
+
+    return docentes
+
+
+
+
 # Comentario de segurity
 # Lista de columnas permitidas para el filtrado
 ALLOWED_FILTERS = {
@@ -400,7 +453,7 @@ async def list_docentes_paginated(page: int = Query(1, alias="page"), per_page: 
 
     # Consulta SQL para obtener el total de usuarios y la paginación
     query = """
-        SELECT identificacion, nombre_completo, correo_electronico, numero_celular,otro_numero_contacto,nivel_formacion,areas_especializacion
+        SELECT identificacion, nombre_completo, correo_electronico, numero_celular,otro_numero_contacto,nivel_formacion,areas_especializacion,promedio
         FROM docentes
         LIMIT %s OFFSET %s
     """
@@ -440,7 +493,8 @@ async def search_docentes(query: str = Query(..., alias="query")):
     cursor = connection.cursor(dictionary=True)
 
     search_query = """
-        SELECT identificacion, nombre_completo, correo_electronico, numero_celular, otro_numero_contacto, nivel_formacion, areas_especializacion
+        SELECT identificacion, nombre_completo, correo_electronico, numero_celular, otro_numero_contacto, 
+               nivel_formacion, areas_especializacion, promedio
         FROM docentes
         WHERE LOWER(nombre_completo) LIKE %s
            OR LOWER(correo_electronico) LIKE %s
@@ -449,7 +503,6 @@ async def search_docentes(query: str = Query(..., alias="query")):
            OR LOWER(areas_especializacion) LIKE %s
     """
     
-    # Realizar la búsqueda usando el query proporcionado
     search_param = f"%{query.lower()}%"
     cursor.execute(search_query, (search_param, search_param, search_param, search_param, search_param))
     docentes = cursor.fetchall()
@@ -458,6 +511,7 @@ async def search_docentes(query: str = Query(..., alias="query")):
     connection.close()
 
     return {"docentes": docentes}
+
 
 
 # Modelo para recibir la nota (entero de 1 a 5)
@@ -483,9 +537,9 @@ async def registrar_nota(connection, docente_identificacion: str, nueva_nota: in
     nueva_puntuacion_total = puntuacion_total + nueva_nota
     nuevo_total_usuarios = total_usuarios + 1
     nuevo_promedio = nueva_puntuacion_total / nuevo_total_usuarios
-    
-    # Convertir el promedio a cadena (por ejemplo, con dos decimales)
-    promedio_str = f"{nuevo_promedio:.2f}"
+
+    # Convertir el promedio a Decimal con dos decimales (5,2) redondeando correctamente
+    nuevo_promedio_decimal = Decimal(nuevo_promedio).quantize(Decimal("0.00"), rounding=ROUND_HALF_UP)
     
     # Actualizar el registro en la base de datos usando 'identificacion'
     query_update = """
@@ -496,7 +550,7 @@ async def registrar_nota(connection, docente_identificacion: str, nueva_nota: in
         WHERE identificacion = %s
     """
     try:
-        cursor.execute(query_update, (nueva_puntuacion_total, nuevo_total_usuarios, promedio_str, docente_identificacion))
+        cursor.execute(query_update, (nueva_puntuacion_total, nuevo_total_usuarios, nuevo_promedio_decimal, docente_identificacion))
         connection.commit()
     except Exception as e:
         connection.rollback()
@@ -504,7 +558,8 @@ async def registrar_nota(connection, docente_identificacion: str, nueva_nota: in
     finally:
         cursor.close()
     
-    return {"mensaje": "Nota registrada exitosamente", "promedio_actual": promedio_str}
+    # Retornamos el nuevo promedio en cadena para la respuesta
+    return {"mensaje": "Nota registrada exitosamente", "promedio_actual": str(nuevo_promedio_decimal)}
 
 # Endpoint para registrar la nota
 @app.post("/docentes/{docente_identificacion}/nota")
