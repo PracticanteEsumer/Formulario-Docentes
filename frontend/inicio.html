@@ -1,33 +1,79 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="static/css/style.css">
     <title>Inicio de Sesión</title>
+    <!-- Incluir SweetAlert2 desde CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
+
 <body>
     <div class="container">
         <div class="logo-container">
             <img src="/static/img/ESUMERLOGO.png" alt="imagen superior" class="top-image">
         </div>
-        
+
         <!-- Formulario de inicio de sesión -->
         <form class="login-form" id="login-form" method="POST" action="/login" autocomplete="off">
             <label class="welcome-message">INICIA DE SESIÓN</label>
             <div class="input-container">
-                <input class="input" type="text" id="strUsuario" name="strUsuario" placeholder="USUARIO" required autocomplete="off">
+                <input class="input" type="text" id="strUsuario" name="strUsuario" placeholder="USUARIO" required
+                    autocomplete="off">
             </div>
             <div class="input-container">
-                <input class="input" type="password" id="strContrasenna" name="strContrasenna" placeholder="CONTRASEÑA" required autocomplete="off">
+                <input class="input" type="password" id="strContrasenna" name="strContrasenna" placeholder="CONTRASEÑA"
+                    required autocomplete="off">
             </div>
             <button type="submit" class="submit-btn">INICIO</button>
         </form>
 
-        <!-- Mensaje de error -->
+        <!-- Mensaje de error, oculto por defecto -->
         <div id="error-message" style="display:none;">
             <p>Usuario o contraseña incorrectos.</p>
         </div>
     </div>
+
+    <script>
+        // Interceptamos el envío del formulario de login
+        document.getElementById('login-form').addEventListener('submit', async function (event) {
+            event.preventDefault(); // Evitar el envío normal del formulario
+
+            const form = event.target;
+            const formData = new FormData(form);
+
+            try {
+                const response = await fetch(form.action, {
+                    method: form.method,
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    // Si ocurre un error, obtener el detalle de la respuesta (por ejemplo, "Credenciales incorrectas")
+                    const errorData = await response.json();
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: errorData.detail || 'Usuario o contraseña incorrectos.'
+                    });
+                } else {
+                    // Si es correcto, redirigir al usuario (el backend debería establecer la cookie y redirigir)
+                    // Por ejemplo, si el servidor devuelve un RedirectResponse, el navegador puede redirigir.
+                    // Si no, podemos redirigir manualmente:
+                    window.location.href = '/admin';
+                }
+            } catch (error) {
+                console.error("Error en el login:", error);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: 'Ha ocurrido un error durante el inicio de sesión.'
+                });
+            }
+        });
+    </script>
 </body>
+
 </html>

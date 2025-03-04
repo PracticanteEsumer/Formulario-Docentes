@@ -392,27 +392,6 @@
         }
       };
 
-      // Función auxiliar para convertir un promedio decimal a estrellas
-      function getStarRating(ratingDecimal) {
-        const rating = parseFloat(ratingDecimal);
-        if (isNaN(rating)) return "N/A"; // Retorna "N/A" si el rating no es un número válido
-
-        const fullStars = Math.floor(rating);
-        const halfStars = (rating - fullStars) >= 0.5 ? 1 : 0;
-        const emptyStars = 5 - fullStars - halfStars;
-
-        let starsHTML = "";
-        for (let i = 0; i < fullStars; i++) {
-          starsHTML += '<i class="fas fa-star"></i>';
-        }
-        if (halfStars) {
-          starsHTML += '<i class="fas fa-star-half-alt"></i>';
-        }
-        for (let i = 0; i < emptyStars; i++) {
-          starsHTML += '<i class="far fa-star"></i>';
-        }
-        return starsHTML;
-      }
 
       async function searchDocentes() {
         const query = document.getElementById("search-input").value.toLowerCase();
@@ -783,39 +762,91 @@
         modal.style.display = "none";
       }
 
+      async function getCurrentUser() {
+        try {
+          const response = await fetch('/current_user');
+          const data = await response.json();
+          console.log("Current user ID:", data.user_id);
+          // Almacenar el ID del usuario en una variable global y en localStorage
+          window.currentUser = data.user_id;
+          localStorage.setItem("currentUser", data.user_id);
+        } catch (error) {
+          console.error("Error fetching current user:", error);
+        }
+      }
+      // Llamamos a la función para almacenar el usuario
+      getCurrentUser();
+
       // Función para enviar la nota al backend
       async function submitNote(teacherIdentificacion) {
+        // Obtener la nota seleccionada
         const select = document.getElementById("noteSelect");
         const nota = parseInt(select.value);
+        console.log("submitNote: teacherIdentificacion =", teacherIdentificacion, "nota =", nota);
+
+        // Obtener el ID del usuario; por ejemplo, desde una variable global o localStorage
+        const currentUser = window.currentUser || localStorage.getItem("currentUser");
+        if (!currentUser) {
+          Swal.fire({
+            icon: 'warning',
+            title: 'Usuario no encontrado',
+            text: "No se encontró el usuario actual. Por favor, inicia sesión nuevamente."
+          }).then(() => {
+            closeNoteModal();
+          });
+          return;
+        }
+        console.log("submitNote: currentUser =", currentUser);
 
         try {
           const response = await fetch(`/docentes/${teacherIdentificacion}/nota`, {
             method: "POST",
             headers: {
-              "Content-Type": "application/json"
+              "Content-Type": "application/json",
+              "X-User-Id": currentUser
             },
             body: JSON.stringify({ nota: nota })
           });
+          console.log("submitNote: Response status =", response.status);
 
           if (!response.ok) {
             const errorData = await response.json();
-            alert("Error al registrar la nota: " + (errorData.detail || "Error desconocido"));
+            console.log("submitNote: Error response data =", errorData);
+            Swal.fire({
+              icon: 'error',
+              title: 'Error',
+              text: "Error al registrar la nota: " + (errorData.detail || "Error desconocido")
+            });
+            closeNoteModal();
             return;
           }
 
           const data = await response.json();
-          alert("Nota registrada con éxito. Promedio actual: " + data.promedio_actual);
+          console.log("submitNote: Success response data =", data);
+          Swal.fire({
+            icon: 'success',
+            title: 'Éxito',
+            text: "Nota registrada con éxito. Promedio actual: " + data.promedio_actual
+          });
           closeNoteModal();
 
-          // Actualizar la lista de docentes si está definida la función renderDocentes
+          // Actualizar la lista de docentes
           if (typeof renderDocentes === "function" && typeof currentPage !== "undefined") {
+            console.log("submitNote: Actualizando lista de docentes para la página:", currentPage);
             renderDocentes(currentPage);
           }
         } catch (error) {
-          console.error("Error al registrar la nota:", error);
-          alert("Error al registrar la nota.");
+          console.error("submitNote: Error al registrar la nota:", error);
+          Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: "Error al registrar la nota."
+          }).then(() => {
+            closeNoteModal();
+          });
         }
       }
+
 
       // Cerrar el modal si se hace clic fuera de él
       window.onclick = function (event) {
@@ -824,9 +855,6 @@
           closeNoteModal();
         }
       };
-
-
-
 
 
       // Inicializar la tabla de docentes

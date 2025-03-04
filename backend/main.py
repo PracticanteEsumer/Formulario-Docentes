@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, Form, HTTPException,Response, UploadFile,Query,Depends
+from fastapi import FastAPI, File, Form, HTTPException,Response, UploadFile,Query,Depends,Cookie
 from fastapi.responses import HTMLResponse,RedirectResponse,JSONResponse    
 from fastapi.staticfiles import StaticFiles
 import os
@@ -11,24 +11,136 @@ from pydantic import BaseModel
 from io import BytesIO
 from decimal import Decimal, ROUND_HALF_UP
 
+
 # Inicializar la API
 app = FastAPI()
-
-# Diccionario con usuarios y contraseñas
-users={
-    "admin1": {"password": "admin1", "role": "admin"},
-    "admin2": {"password": "admin2", "role": "viewer_downloader"},
-    "admin3": {"password": "admin3", "role": "viewer"}
-}   
-
 
 # Montar la carpeta estática para que FastAPI reconozca los archivos de estilo CSS
 app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "../frontend/static")), name="static")
 
-# Montar la carpeta 'CarpetaInfo' como una carpeta estática para acceder a los archivos PDF
-app.mount("/CarpetaInfo", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "../CarpetaInfo")), name="CarpetaInfo")
+
+# Diccionario de usuarios con ID asignados
+users = {
+    "admin1": {"id": "1", "password": "admin1", "role": "admin"},
+    "admin2": {"id": "2", "password": "admin2", "role": "admin"},
+    "admin3": {"id": "3", "password": "admin3", "role": "admin"}
+} 
+
+# Cargar la página de inicio de sesión
+@app.get("/", response_class=HTMLResponse)
+async def index():
+    # Ruta del archivo HTML de inicio
+    index_path = os.path.join(os.path.dirname(__file__), "../frontend/inicio.html")
+    with open(index_path, "r", encoding="utf-8") as f:
+        # Retornamos la respuesta en HTML
+        return HTMLResponse(content=f.read(), status_code=200)
 
 
+# Manejo del inicio de sesión
+@app.post("/login")
+async def login(strUsuario: str = Form(...), strContrasenna: str = Form(...)):
+    if strUsuario in users and users[strUsuario]["password"] == strContrasenna:
+        response = RedirectResponse(url="/admin", status_code=303)
+        # Para desarrollo, podrías quitar httponly para leer la cookie en JS; en producción, déjalo activado.
+        response.set_cookie(
+            key="user_id",
+            value=users[strUsuario]["id"],
+            httponly=False,       # Cambia a True en producción
+            secure=False,
+            samesite="lax"
+        )
+        return response
+    else:
+        raise HTTPException(status_code=401, detail="Credenciales incorrectas")
+
+
+# RUTAS DE DOCENTES 
+@app.get("/admin", response_class=HTMLResponse)
+async def list_docentes():
+    # Obtener los usuarios usando la función de storage.py
+    docentes = get_teachers()
+
+    # Leer el archivo HTML
+    template_path = os.path.join(os.path.dirname(__file__), "../frontend/tableInfoDocentes.html")
+    with open(template_path, "r", encoding="utf-8") as f:
+        html_content = f.read()
+
+    # Inyectar los datos de los usuarios en el HTML
+    table_rows = ""
+    for docente in docentes:
+        table_rows += f"""
+            <tr>
+                <td>{docente['nombre_completo']}</td>
+                <td>{docente['correo_electronico']}</td>
+                <td>{docente['numero_celular']}</td>
+                <td>{docente['nivel_formacion']}</td>
+                <td>{docente['promedio']}</td>
+            </tr>
+        """
+    
+    # Reemplazamos el marcador en el HTML con las filas generadas
+    html_content = html_content.replace("<!-- rows-placeholder -->", table_rows)
+
+    return HTMLResponse(content=html_content)
+
+@app.post("/logout")
+async def logout(response: Response):
+    # Eliminar la cookie de sesión
+    response.delete_cookie("session") 
+    
+    # Redirigir al login
+    return RedirectResponse(url="/", status_code=303)
+
+
+# Función para obtener los usuarios desde la base de datos
+def get_teachers():
+    connection = get_db()
+    cursor = connection.cursor(dictionary=True)
+
+    # Consulta para obtener los usuarios
+    query = """ 
+        SELECT identificacion, marca_temporal, nombre_completo, correo_electronico, numero_celular, otro_numero_contacto,
+        envio_whatsapp, lugar_residencia, nivel_formacion, titulos_pregrado, areas_especializacion, resumen_experiencia, 
+        titulos_posgrado, certificaciones, disponibilidad_lunes, disponibilidad_martes, disponibilidad_miercoles, 
+        disponibilidad_jueves, disponibilidad_viernes, disponibilidad_sabado, disponibilidad_viajar, equipo_conexion_estable, estilo_formador, 
+        metodologia, casos_impacto, restriccion_contractual, hoja_vida, video_enlace, aviso_proteccion_datos, promedio
+        FROM docentes
+    """
+    cursor.execute(query)
+    docentes = cursor.fetchall()
+
+    # Cerrar la conexión
+    cursor.close()
+    connection.close()
+
+    return docentes  # Sin la coma
+
+
+#Endpoint para el detalle del docente
+@app.get("/teachers/{teacher_id}")
+def get_teacher_detail(teacher_id: str):
+    connection = get_db()
+    cursor = connection.cursor(dictionary=True)
+    query = """
+        SELECT identificacion, marca_temporal, nombre_completo, correo_electronico, numero_celular, otro_numero_contacto,
+               envio_whatsapp, lugar_residencia, nivel_formacion, titulos_pregrado, areas_especializacion, resumen_experiencia, 
+               titulos_posgrado, certificaciones, disponibilidad_lunes, disponibilidad_martes, disponibilidad_miercoles, 
+               disponibilidad_jueves, disponibilidad_sabado, disponibilidad_viajar, equipo_conexion_estable, estilo_formador, 
+               metodologia, casos_impacto, restriccion_contractual, hoja_vida, video_enlace, aviso_proteccion_datos, promedio
+        FROM docentes
+        WHERE identificacion = %s
+    """
+    cursor.execute(query, (teacher_id,))
+    teacher = cursor.fetchone()
+    cursor.close()
+    connection.close()
+    
+    if teacher is None:
+        raise HTTPException(status_code=404, detail="Docente no encontrado")
+    
+    return teacher
+
+# Modelo de la BD para el registro de un docente
 class Docente(BaseModel):
     identificacion: str
     marca_temporal: str
@@ -59,14 +171,6 @@ class Docente(BaseModel):
     video_enlace: Optional[str] = None
     aviso_proteccion_datos: str
     disponibilidad_sabado: str
-    
-    # Nuevos campos para notas
-    puntuacion_total: int   # Almacenará la suma de todas las notas
-    total_usuarios: int   # Número de usuarios que han registrado una nota
-    promedio: str  # Promedio de las notas registradas
-
-
-
 
 # Función asíncrona para insertar un docente en la base de datos
 async def insert_docente(connection, docente_data):
@@ -91,6 +195,243 @@ async def insert_docente(connection, docente_data):
         print(f"Error al insertar docente: {e}")
     finally:
         cursor.close()
+
+
+# Lista de columnas permitidas para el filtrado
+ALLOWED_FILTERS = {
+    "lugar_residencia",
+    "nivel_formacion",
+    "areas_especializacion",
+    "disponibilidad_lunes",
+    "disponibilidad_martes",
+    "disponibilidad_miercoles",
+    "disponibilidad_jueves",
+    "disponibilidad_viernes",
+    "disponibilidad_sabado",
+    "disponibilidad_viajar",
+    "equipo_conexion_estable",
+    "restriccion_contractual"
+}
+
+# Primero definimos la ruta para obtener los valores únicos
+@app.get("/teachers/distinct")
+def get_distinct(field: str = Query(...)):
+    if field not in ALLOWED_FILTERS:
+        raise HTTPException(status_code=400, detail="El campo de filtro no es válido")
+    
+    connection = get_db()
+    cursor = connection.cursor(dictionary=True)
+    
+    query = f"SELECT DISTINCT {field} FROM docentes"
+    cursor.execute(query)
+    rows = cursor.fetchall()
+    
+    distinct_values = [row[field] for row in rows if row[field] is not None]
+    
+    cursor.close()
+    connection.close()
+    
+    return distinct_values
+
+# Luego definimos el endpoint para filtrar docentes
+@app.get("/teachers/filter")
+def filter_teachers(field: str = Query(...), value: str = Query(...)):
+    if field not in ALLOWED_FILTERS:
+        raise HTTPException(status_code=400, detail="El campo de filtro no es válido")
+    
+    connection = get_db()
+    cursor = connection.cursor(dictionary=True)
+    
+    query = f"""
+        SELECT identificacion, marca_temporal, nombre_completo, correo_electronico, numero_celular, otro_numero_contacto,
+        envio_whatsapp, lugar_residencia, nivel_formacion, titulos_pregrado, areas_especializacion, resumen_experiencia, 
+        titulos_posgrado, certificaciones, disponibilidad_lunes, disponibilidad_martes, disponibilidad_miercoles, 
+        disponibilidad_jueves, disponibilidad_sabado, disponibilidad_viajar, equipo_conexion_estable, estilo_formador, 
+        metodologia, casos_impacto, restriccion_contractual, hoja_vida, video_enlace, aviso_proteccion_datos,promedio
+        FROM docentes
+        WHERE {field} LIKE %s
+    """
+    cursor.execute(query, (f"%{value}%",))
+    docentes = cursor.fetchall()
+    
+    cursor.close()
+    connection.close()
+    
+    return docentes
+
+@app.get("/docentes_paginated", response_class=JSONResponse)
+async def list_docentes_paginated(page: int = Query(1, alias="page"), per_page: int = Query(10, alias="per_page")):
+    """
+    Obtiene la lista de docentes con paginación.
+    """
+    # Crear la conexión a la base de datos  
+    connection = get_db()
+    cursor = connection.cursor(dictionary=True)
+
+    # Consulta SQL para obtener el total de usuarios y la paginación
+    query = """
+        SELECT identificacion, nombre_completo, correo_electronico, numero_celular,otro_numero_contacto,nivel_formacion,areas_especializacion,promedio
+        FROM docentes
+        LIMIT %s OFFSET %s
+    """
+    
+    # Calcular el índice de inicio (OFFSET) y el número de usuarios por página (LIMIT)
+    offset = (page - 1) * per_page
+    cursor.execute(query, (per_page, offset))
+    docentes = cursor.fetchall()
+
+    # Consulta para obtener el número total de usuarios
+    cursor.execute("SELECT COUNT(*) FROM docentes")
+    total_docentes = cursor.fetchone()["COUNT(*)"]
+
+    # Cerrar la conexión a la base de datos
+    cursor.close()
+    connection.close()
+
+    # Calcular el número total de páginas
+    total_pages = (total_docentes + per_page - 1) // per_page  # Redondeo hacia arriba
+    
+    return {
+        "docentes": docentes,
+        "total_docentes": total_docentes,
+        "current_page": page,
+        "per_page": per_page,
+        "total_pages": total_pages  # Retornar el total de páginas
+    }
+
+
+@app.get("/docentes_search", response_class=JSONResponse)
+async def search_docentes(query: str = Query(..., alias="query")):
+    """
+    Busca docentes por nombre, correo, número de celular, nivel de formación o áreas de especialización.
+    """
+    connection = get_db()
+    cursor = connection.cursor(dictionary=True)
+
+    search_query = """
+        SELECT identificacion, nombre_completo, correo_electronico, numero_celular, otro_numero_contacto, 
+               nivel_formacion, areas_especializacion, promedio
+        FROM docentes
+        WHERE LOWER(nombre_completo) LIKE %s
+           OR LOWER(correo_electronico) LIKE %s
+           OR LOWER(numero_celular) LIKE %s
+           OR LOWER(nivel_formacion) LIKE %s
+           OR LOWER(areas_especializacion) LIKE %s
+    """
+    
+    search_param = f"%{query.lower()}%"
+    cursor.execute(search_query, (search_param, search_param, search_param, search_param, search_param))
+    docentes = cursor.fetchall()
+
+    cursor.close()
+    connection.close()
+
+    return {"docentes": docentes}
+
+
+# Modelo Pydantic para recibir la nota (entrada para el endpoint)
+class NotaModel(BaseModel):
+    nota: int
+
+# Modelo Pydantic para la tabla de calificaciones (opcional, para documentación/respuesta)
+class CalificacionModel(BaseModel):
+    id: int = None
+    docente_identificacion: str
+    user_id: str
+    nota: int
+    created_at: datetime = None
+
+    class Config:
+        orm_mode = True
+
+@app.get("/current_user")
+async def current_user(user_id: str = Cookie(...)):
+    # Simplemente retornamos el ID para depuración
+    return {"user_id": user_id}
+
+
+# Dependencia para obtener el usuario actual desde la cookie "user_id"
+def get_current_user(user_id: str = Cookie(...)):
+    print("Current user ID from cookie:", user_id)
+    if user_id not in [u["id"] for u in users.values()]:
+        raise HTTPException(status_code=401, detail="Usuario no autorizado")
+    return user_id
+
+
+# Función asíncrona para registrar la nota y actualizar el docente
+async def registrar_nota(connection, docente_identificacion: str, nueva_nota: int, current_user: str):
+    cursor = connection.cursor(dictionary=True)
+    
+    # VALIDACIÓN: Verificar si el usuario ya calificó a este docente en la tabla de calificaciones
+    query_check = """
+        SELECT * FROM calificaciones 
+        WHERE docente_identificacion = %s AND user_id = %s
+    """
+    cursor.execute(query_check, (docente_identificacion, current_user))
+    if cursor.fetchone():
+        cursor.close()
+        connection.close()
+        raise HTTPException(status_code=400, detail="Ya has calificado a este docente.")
+
+    try:
+        # 1. Insertar la calificación en la tabla de calificaciones
+        query_insert = """
+            INSERT INTO calificaciones (docente_identificacion, user_id, nota, created_at)
+            VALUES (%s, %s, %s, NOW())
+        """
+        cursor.execute(query_insert, (docente_identificacion, current_user, nueva_nota))
+        
+        # 2. Obtener los valores actuales de puntuación total y total de usuarios en la tabla de docentes
+        query_select = """
+            SELECT puntuacion_total, total_usuarios 
+            FROM docentes 
+            WHERE identificacion = %s
+        """
+        cursor.execute(query_select, (docente_identificacion,))
+        row = cursor.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Docente no encontrado")
+        
+        puntuacion_total = row["puntuacion_total"]
+        total_usuarios = row["total_usuarios"]
+        
+        # Actualizar la puntuación total y el contador de usuarios
+        nueva_puntuacion_total = puntuacion_total + nueva_nota
+        nuevo_total_usuarios = total_usuarios + 1
+        nuevo_promedio = nueva_puntuacion_total / nuevo_total_usuarios
+
+        # Convertir el promedio a Decimal con dos decimales (5,2)
+        nuevo_promedio_decimal = Decimal(nuevo_promedio).quantize(Decimal("0.00"), rounding=ROUND_HALF_UP)
+        
+        # 3. Actualizar el registro del docente
+        query_update = """
+            UPDATE docentes 
+            SET puntuacion_total = %s, total_usuarios = %s, promedio = %s
+            WHERE identificacion = %s
+        """
+        cursor.execute(query_update, (nueva_puntuacion_total, nuevo_total_usuarios, nuevo_promedio_decimal, docente_identificacion))
+        
+        connection.commit()
+    except Exception as e:
+        connection.rollback()
+        raise HTTPException(status_code=500, detail=f"Error al registrar la nota: {str(e)}")
+    finally:
+        cursor.close()
+        connection.close()
+    
+    return {"mensaje": "Nota registrada exitosamente", "promedio_actual": str(nuevo_promedio_decimal)}
+
+# Endpoint para registrar la nota de un docente
+@app.post("/docentes/{docente_identificacion}/nota", response_class=JSONResponse)
+async def registrar_nota_endpoint(
+    docente_identificacion: str,
+    nota_model: NotaModel,
+    connection = Depends(get_db),
+    current_user: str = Depends(get_current_user)
+):
+    resultado = await registrar_nota(connection, docente_identificacion, nota_model.nota, current_user)
+    return resultado
+
 
 # Función asíncrona para procesar el archivo Excel y guardar los datos en la BD
 async def process_excel(file: UploadFile) -> dict:
@@ -241,378 +582,3 @@ async def upload_file(file: UploadFile = File(...)):
         message += "<br>" + duplicate_message
 
     return {"success": True, "message": message}
-
-
-
-# Función para obtener los usuarios desde la base de datos
-def get_teachers():
-    connection = get_db()
-    cursor = connection.cursor(dictionary=True)
-
-    # Consulta para obtener los usuarios
-    query = """ 
-        SELECT identificacion, marca_temporal, nombre_completo, correo_electronico, numero_celular, otro_numero_contacto,
-        envio_whatsapp, lugar_residencia, nivel_formacion, titulos_pregrado, areas_especializacion, resumen_experiencia, 
-        titulos_posgrado, certificaciones, disponibilidad_lunes, disponibilidad_martes, disponibilidad_miercoles, 
-        disponibilidad_jueves, disponibilidad_viernes, disponibilidad_sabado, disponibilidad_viajar, equipo_conexion_estable, estilo_formador, 
-        metodologia, casos_impacto, restriccion_contractual, hoja_vida, video_enlace, aviso_proteccion_datos, promedio
-        FROM docentes
-    """
-    cursor.execute(query)
-    docentes = cursor.fetchall()
-
-    # Cerrar la conexión
-    cursor.close()
-    connection.close()
-
-    return docentes  # Sin la coma
-
-
-
-def get_teachers_with_rating(user_id: str):
-    connection = get_db()
-    cursor = connection.cursor(dictionary=True)
-
-    query = """ 
-        SELECT 
-            d.identificacion, 
-            d.marca_temporal, 
-            d.nombre_completo, 
-            d.correo_electronico, 
-            d.numero_celular, 
-            d.otro_numero_contacto,
-            d.envio_whatsapp, 
-            d.lugar_residencia, 
-            d.nivel_formacion, 
-            d.titulos_pregrado, 
-            d.areas_especializacion, 
-            d.resumen_experiencia, 
-            d.titulos_posgrado, 
-            d.certificaciones, 
-            d.disponibilidad_lunes, 
-            d.disponibilidad_martes, 
-            d.disponibilidad_miercoles, 
-            d.disponibilidad_jueves, 
-            d.disponibilidad_viernes, 
-            d.disponibilidad_sabado, 
-            d.disponibilidad_viajar, 
-            d.equipo_conexion_estable, 
-            d.estilo_formador, 
-            d.metodologia, 
-            d.casos_impacto, 
-            d.restriccion_contractual, 
-            d.hoja_vida, 
-            d.video_enlace, 
-            d.aviso_proteccion_datos, 
-            d.promedio,
-            CASE WHEN c.user_id IS NOT NULL THEN TRUE ELSE FALSE END AS ya_califico
-        FROM docentes d
-        LEFT JOIN calificaciones c 
-            ON d.identificacion = c.docente_identificacion AND c.user_id = %s
-    """
-    
-    cursor.execute(query, (user_id,))
-    docentes = cursor.fetchall()
-    cursor.close()
-    connection.close()
-
-    return docentes
-
-
-
-
-# Comentario de segurity
-# Lista de columnas permitidas para el filtrado
-ALLOWED_FILTERS = {
-    "lugar_residencia",
-    "nivel_formacion",
-    "areas_especializacion",
-    "disponibilidad_lunes",
-    "disponibilidad_martes",
-    "disponibilidad_miercoles",
-    "disponibilidad_jueves",
-    "disponibilidad_viernes",
-    "disponibilidad_sabado",
-    "disponibilidad_viajar",
-    "equipo_conexion_estable",
-    "restriccion_contractual"
-}
-
-
-
-# Primero definimos la ruta para obtener los valores únicos
-@app.get("/teachers/distinct")
-def get_distinct(field: str = Query(...)):
-    if field not in ALLOWED_FILTERS:
-        raise HTTPException(status_code=400, detail="El campo de filtro no es válido")
-    
-    connection = get_db()
-    cursor = connection.cursor(dictionary=True)
-    
-    query = f"SELECT DISTINCT {field} FROM docentes"
-    cursor.execute(query)
-    rows = cursor.fetchall()
-    
-    distinct_values = [row[field] for row in rows if row[field] is not None]
-    
-    cursor.close()
-    connection.close()
-    
-    return distinct_values
-
-# Luego definimos el endpoint para filtrar docentes
-@app.get("/teachers/filter")
-def filter_teachers(field: str = Query(...), value: str = Query(...)):
-    if field not in ALLOWED_FILTERS:
-        raise HTTPException(status_code=400, detail="El campo de filtro no es válido")
-    
-    connection = get_db()
-    cursor = connection.cursor(dictionary=True)
-    
-    query = f"""
-        SELECT identificacion, marca_temporal, nombre_completo, correo_electronico, numero_celular, otro_numero_contacto,
-        envio_whatsapp, lugar_residencia, nivel_formacion, titulos_pregrado, areas_especializacion, resumen_experiencia, 
-        titulos_posgrado, certificaciones, disponibilidad_lunes, disponibilidad_martes, disponibilidad_miercoles, 
-        disponibilidad_jueves, disponibilidad_sabado, disponibilidad_viajar, equipo_conexion_estable, estilo_formador, 
-        metodologia, casos_impacto, restriccion_contractual, hoja_vida, video_enlace, aviso_proteccion_datos,promedio
-        FROM docentes
-        WHERE {field} LIKE %s
-    """
-    cursor.execute(query, (f"%{value}%",))
-    docentes = cursor.fetchall()
-    
-    cursor.close()
-    connection.close()
-    
-    return docentes
-
-# Y finalmente el endpoint para el detalle del docente
-@app.get("/teachers/{teacher_id}")
-def get_teacher_detail(teacher_id: str):
-    connection = get_db()
-    cursor = connection.cursor(dictionary=True)
-    query = """
-        SELECT identificacion, marca_temporal, nombre_completo, correo_electronico, numero_celular, otro_numero_contacto,
-               envio_whatsapp, lugar_residencia, nivel_formacion, titulos_pregrado, areas_especializacion, resumen_experiencia, 
-               titulos_posgrado, certificaciones, disponibilidad_lunes, disponibilidad_martes, disponibilidad_miercoles, 
-               disponibilidad_jueves, disponibilidad_sabado, disponibilidad_viajar, equipo_conexion_estable, estilo_formador, 
-               metodologia, casos_impacto, restriccion_contractual, hoja_vida, video_enlace, aviso_proteccion_datos, promedio
-        FROM docentes
-        WHERE identificacion = %s
-    """
-    cursor.execute(query, (teacher_id,))
-    teacher = cursor.fetchone()
-    cursor.close()
-    connection.close()
-    
-    if teacher is None:
-        raise HTTPException(status_code=404, detail="Docente no encontrado")
-    
-    return teacher
-
-
-    
-# RUTAS DE DOCENTES 
-@app.get("/admin", response_class=HTMLResponse)
-async def list_docentes():
-    # Obtener los usuarios usando la función de storage.py
-    docentes = get_teachers()
-
-    # Leer el archivo HTML
-    template_path = os.path.join(os.path.dirname(__file__), "../frontend/tableInfoDocentes.html")
-    with open(template_path, "r", encoding="utf-8") as f:
-        html_content = f.read()
-
-    # Inyectar los datos de los usuarios en el HTML
-    table_rows = ""
-    for docente in docentes:
-        table_rows += f"""
-            <tr>
-                <td>{docente['nombre_completo']}</td>
-                <td>{docente['correo_electronico']}</td>
-                <td>{docente['numero_celular']}</td>
-                <td>{docente['nivel_formacion']}</td>
-                <td>{docente['promedio']}</td>
-            </tr>
-        """
-    
-    # Reemplazamos el marcador en el HTML con las filas generadas
-    html_content = html_content.replace("<!-- rows-placeholder -->", table_rows)
-
-    return HTMLResponse(content=html_content)
-
-
-@app.get("/docentes_paginated", response_class=JSONResponse)
-async def list_docentes_paginated(page: int = Query(1, alias="page"), per_page: int = Query(10, alias="per_page")):
-    """
-    Obtiene la lista de docentes con paginación.
-    """
-    # Crear la conexión a la base de datos  
-    connection = get_db()
-    cursor = connection.cursor(dictionary=True)
-
-    # Consulta SQL para obtener el total de usuarios y la paginación
-    query = """
-        SELECT identificacion, nombre_completo, correo_electronico, numero_celular,otro_numero_contacto,nivel_formacion,areas_especializacion,promedio
-        FROM docentes
-        LIMIT %s OFFSET %s
-    """
-    
-    # Calcular el índice de inicio (OFFSET) y el número de usuarios por página (LIMIT)
-    offset = (page - 1) * per_page
-    cursor.execute(query, (per_page, offset))
-    docentes = cursor.fetchall()
-
-    # Consulta para obtener el número total de usuarios
-    cursor.execute("SELECT COUNT(*) FROM docentes")
-    total_docentes = cursor.fetchone()["COUNT(*)"]
-
-    # Cerrar la conexión a la base de datos
-    cursor.close()
-    connection.close()
-
-    # Calcular el número total de páginas
-    total_pages = (total_docentes + per_page - 1) // per_page  # Redondeo hacia arriba
-    
-    return {
-        "docentes": docentes,
-        "total_docentes": total_docentes,
-        "current_page": page,
-        "per_page": per_page,
-        "total_pages": total_pages  # Retornar el total de páginas
-    }
-
-
-
-@app.get("/docentes_search", response_class=JSONResponse)
-async def search_docentes(query: str = Query(..., alias="query")):
-    """
-    Busca docentes por nombre, correo, número de celular, nivel de formación o áreas de especialización.
-    """
-    connection = get_db()
-    cursor = connection.cursor(dictionary=True)
-
-    search_query = """
-        SELECT identificacion, nombre_completo, correo_electronico, numero_celular, otro_numero_contacto, 
-               nivel_formacion, areas_especializacion, promedio
-        FROM docentes
-        WHERE LOWER(nombre_completo) LIKE %s
-           OR LOWER(correo_electronico) LIKE %s
-           OR LOWER(numero_celular) LIKE %s
-           OR LOWER(nivel_formacion) LIKE %s
-           OR LOWER(areas_especializacion) LIKE %s
-    """
-    
-    search_param = f"%{query.lower()}%"
-    cursor.execute(search_query, (search_param, search_param, search_param, search_param, search_param))
-    docentes = cursor.fetchall()
-
-    cursor.close()
-    connection.close()
-
-    return {"docentes": docentes}
-
-
-
-# Modelo para recibir la nota (entero de 1 a 5)
-class NotaModel(BaseModel):
-    nota: int
-
-# Función asíncrona para registrar la nota y actualizar el docente
-async def registrar_nota(connection, docente_identificacion: str, nueva_nota: int):
-    cursor = connection.cursor()
-    
-    # Consultar los valores actuales del docente usando 'identificacion'
-    query_select = "SELECT puntuacion_total, total_usuarios FROM docentes WHERE identificacion = %s"
-    cursor.execute(query_select, (docente_identificacion,))
-    row = cursor.fetchone()
-
-    if row is None:
-        cursor.close()
-        raise Exception(f"Docente con identificación {docente_identificacion} no encontrado")
-    
-    puntuacion_total, total_usuarios = row
-    
-    # Actualizamos la puntuación total y el contador de usuarios
-    nueva_puntuacion_total = puntuacion_total + nueva_nota
-    nuevo_total_usuarios = total_usuarios + 1
-    nuevo_promedio = nueva_puntuacion_total / nuevo_total_usuarios
-
-    # Convertir el promedio a Decimal con dos decimales (5,2) redondeando correctamente
-    nuevo_promedio_decimal = Decimal(nuevo_promedio).quantize(Decimal("0.00"), rounding=ROUND_HALF_UP)
-    
-    # Actualizar el registro en la base de datos usando 'identificacion'
-    query_update = """
-        UPDATE docentes SET 
-            puntuacion_total = %s, 
-            total_usuarios = %s, 
-            promedio = %s
-        WHERE identificacion = %s
-    """
-    try:
-        cursor.execute(query_update, (nueva_puntuacion_total, nuevo_total_usuarios, nuevo_promedio_decimal, docente_identificacion))
-        connection.commit()
-    except Exception as e:
-        connection.rollback()
-        raise Exception(f"Error al actualizar docente: {str(e)}")
-    finally:
-        cursor.close()
-    
-    # Retornamos el nuevo promedio en cadena para la respuesta
-    return {"mensaje": "Nota registrada exitosamente", "promedio_actual": str(nuevo_promedio_decimal)}
-
-# Endpoint para registrar la nota
-@app.post("/docentes/{docente_identificacion}/nota")
-async def registrar_nota_endpoint(
-    docente_identificacion: str,
-    nota_model: NotaModel,
-    connection = Depends(get_db)
-):
-    try:
-        resultado = await registrar_nota(connection, docente_identificacion, nota_model.nota)
-        return resultado
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-
-
-
-# Cargar la página de inicio de sesión
-@app.get("/", response_class=HTMLResponse)
-async def index():
-    # Ruta del archivo HTML de inicio
-    index_path = os.path.join(os.path.dirname(__file__), "../frontend/inicio.html")
-    with open(index_path, "r", encoding="utf-8") as f:
-        # Retornamos la respuesta en HTML
-        return HTMLResponse(content=f.read(), status_code=200)
-
-# Manejo del inicio de sesión
-@app.post("/login")
-async def login(strUsuario: str = Form(...), strContrasenna: str = Form(...)):
-    # Verificar que el usuario exista y que la contraseña sea correcta
-    if strUsuario in users and users[strUsuario]["password"] == strContrasenna:
-        # Si la validación es correcta, redirigir según el rol
-        if users[strUsuario]["role"] == "admin":
-            # Redirigir a la página de admin con un método GET
-            return RedirectResponse(url="/admin", status_code=303)  # 303 See Other (GET)
-        elif users[strUsuario]["role"] == "viewer_downloader":
-            # Redirigir a la página del viewerDownloader con un método GET
-            return RedirectResponse(url="/admin", status_code=303)  # 303 See Other (GET)
-        else:
-            # Redirigir a la página del viewer con un método GET
-            return RedirectResponse(url="/admin",status_code=303)
-    else:
-        # Si la validación falla, lanzar un error 401
-        raise HTTPException(status_code=401, detail="Credenciales incorrectas")
-
-@app.post("/logout")
-async def logout(response: Response):
-    # Eliminar la cookie de sesión
-    response.delete_cookie("session") 
-    
-    # Redirigir al login
-    return RedirectResponse(url="/", status_code=303)
-
-
-
