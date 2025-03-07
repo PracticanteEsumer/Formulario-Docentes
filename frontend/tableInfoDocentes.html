@@ -18,30 +18,37 @@
       /* Oculto por defecto */
       position: fixed;
       z-index: 1100;
-      /* Superior para que tenga prioridad */
       left: 0;
       top: 0;
       width: 100%;
       height: 100%;
       overflow: auto;
       background-color: rgba(0, 0, 0, 0.5);
-      animation: noteFadeIn 0.3s;
+    }
+
+    /* Clase para activar el modal y centrar su contenido */
+    .modal-note.active {
+      display: flex;
+      justify-content: center;
+      align-items: center;
     }
 
     .modal-note-content {
       background-color: #fff;
-      margin: 10% auto;
       padding: 20px;
       border-radius: 8px;
       width: 90%;
-      max-width: 400px;
+      max-width: 500px;
       box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
       animation: noteSlideIn 0.3s;
+      position: relative;
     }
 
     .modal-note-close {
+      position: absolute;
+      top: 10px;
+      right: 15px;
       color: #aaa;
-      float: right;
       font-size: 24px;
       font-weight: bold;
       cursor: pointer;
@@ -52,28 +59,44 @@
     }
 
     /* ---------- Estilos del Formulario del Modal de Notas ---------- */
-    #noteForm label {
-      display: block;
-      margin-bottom: 8px;
-      font-weight: bold;
+    #noteForm {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
     }
 
+    #noteForm label {
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+
+    #noteForm input,
     #noteForm select {
       width: 100%;
-      padding: 8px;
-      margin-bottom: 15px;
+      padding: 12px;
+      font-size: 16px;
+      margin-bottom: 10px;
       border: 1px solid #ccc;
       border-radius: 4px;
+      transition: border-color 0.3s ease;
+    }
+
+    #noteForm input:focus,
+    #noteForm select:focus {
+      border-color: #007bff;
+      outline: none;
     }
 
     #noteForm button {
       background-color: #007bff;
       color: #fff;
       border: none;
-      padding: 10px;
+      padding: 12px;
       border-radius: 4px;
       cursor: pointer;
+      font-size: 16px;
       width: 100%;
+      transition: background-color 0.3s ease;
     }
 
     #noteForm button:hover {
@@ -81,24 +104,32 @@
     }
 
     /* ---------- Animaciones ---------- */
-    @keyframes noteFadeIn {
-      from {
-        opacity: 0;
-      }
-
-      to {
-        opacity: 1;
-      }
-    }
-
     @keyframes noteSlideIn {
       from {
-        transform: translateY(-30px);
+        transform: translateY(-50px);
       }
 
       to {
         transform: translateY(0);
       }
+    }
+
+    .action-btn {
+      height: 40px;
+      /* Fija la altura deseada */
+      min-width: 40px;
+      /* Opcional, para que tengan un ancho mínimo consistente */
+      display: inline-flex;
+      /* Para centrar el contenido */
+      align-items: center;
+      justify-content: center;
+      padding: 0 10px;
+      /* Ajusta el padding según necesites */
+      font-size: 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
     }
   </style>
 
@@ -164,10 +195,10 @@
     <table id="docentes-table">
       <thead>
         <tr>
+          <th>Número de documento</th>
           <th>Nombre docente</th>
-          <th>Correo Electrónico</th>
-          <th>Teléfono</th>
           <th>Nivel de formación</th>
+          <th style="text-align: center;">Notas asignadas</th>
           <th>Acciones</th>
           <th>Valoración</th>
 
@@ -264,11 +295,15 @@
             <option value="4">4</option>
             <option value="5">5</option>
           </select>
+          <label for="str_Evi">Comentario De evaluación Interna:</label>
+          <input type="text" id="str_Evi" name="str_Evi" required placeholder="Ingrese el comentario." />
+          <label for="str_ClienteExterno">Comentario de evaluación Externa:</label>
+          <input type="text" id="str_ClienteExterno" name="str_ClienteExterno" required
+            placeholder="Ingrese el comentario." />
           <button type="submit">Guardar Nota</button>
         </form>
       </div>
     </div>
-
 
 
     <script>
@@ -341,30 +376,37 @@
 
         docentes.forEach((docente) => {
           // Validar el promedio; si no está definido, asignar "0.00"
-          const promedio = docente.promedio !== undefined && docente.promedio !== null
+          const promedio = (docente.promedio !== undefined && docente.promedio !== null)
             ? docente.promedio
             : "0.00";
           // Convertir el promedio a una representación visual de estrellas
           const starRating = getStarRating(promedio);
 
+          // Mostrar la nota del usuario o "No calificado" si no tiene calificación
+          const userNota = docente.user_nota ? docente.user_nota : "No calificado";
+
           const row = document.createElement("tr");
           row.innerHTML = `
-            <td>${docente.nombre_completo}</td>
-            <td>${docente.correo_electronico}</td>
-            <td>${docente.numero_celular}</td>
-            <td>${docente.nivel_formacion}</td>
-            <td class="action-cell">
-                <button class="action-btn view-btn" onclick="viewDocente('${docente.identificacion}')">
-                    <i class="fas fa-eye"></i>
-                </button>
-                <button class="action-btn add-note-btn" onclick="openNoteModal('${docente.identificacion}')">
-                    <i class="fas fa-plus"></i> Agregar Nota
-                </button>
-                
-            </td>
-            <td class="text-center">${starRating}</td>
-
-        `;
+      <td>${docente.identificacion}</td>
+      <td>${docente.nombre_completo}</td>
+      <td>${docente.nivel_formacion}</td>
+      <td class="text-center">${userNota}</td>
+      <td class="action-cell">
+          <button class="action-btn view-btn" onclick="viewDocente('${docente.identificacion}')">
+              <i class="fas fa-eye"></i>
+          </button>
+          <button class="action-btn add-note-btn" onclick="openNoteModal('${docente.identificacion}')">
+              <i class="fas fa-plus"></i> Agregar Nota
+          </button>
+          <button class="action-btn edit-btn" onclick="openEditModal('${docente.identificacion}')">
+              <i class="fas fa-edit"></i> Editar
+          </button>
+          <button class="action-btn delete-btn" onclick="deleteDocente('${docente.identificacion}')">
+              <i class="fas fa-trash"></i> 
+          </button>
+      </td>
+      <td class="text-center">${starRating}</td>
+    `;
           tbody.appendChild(row);
         });
 
@@ -372,6 +414,8 @@
         document.getElementById("prev-page").disabled = currentPage === 1;
         document.getElementById("next-page").disabled = currentPage === totalPages;
       }
+
+
 
 
       function changePage(direction) {
@@ -417,25 +461,26 @@
             // Convertir el promedio a estrellas
             const starRating = getStarRating(docente.promedio);
 
-            // Generar la fila, incluyendo el ranking en estrellas
+            // Para este ejemplo, se asume que "userNota" no se incluye en esta búsqueda,
+            // así que puedes omitirlo o mostrar otro valor.
+            const userNota = "No calificado"; // O si el endpoint retorna esta propiedad, úsala.
+
+            // Generar la fila
             row.innerHTML = `
-                <td>${docente.nombre_completo}</td>
-            <td>${docente.correo_electronico}</td>
-            <td>${docente.numero_celular}</td>
-            <td>${docente.nivel_formacion}</td>
-            <td class="action-cell">
-                <button class="action-btn view-btn" onclick="viewDocente('${docente.identificacion}')">
-                    <i class="fas fa-eye"></i>
-                </button>
-                <button class="action-btn add-note-btn" onclick="openNoteModal('${docente.identificacion}')">
-                    <i class="fas fa-plus"></i> Agregar Nota
-                </button>
-                
-            </td>
-            <td class="text-center">${starRating}</td>
-
-            `;
-
+        <td>${docente.identificacion}</td>
+        <td>${docente.nombre_completo}</td>
+        <td>${docente.nivel_formacion}</td>
+        <td class="text-center">${userNota}</td>
+        <td class="action-cell">
+            <button class="action-btn view-btn" onclick="viewDocente('${docente.identificacion}')">
+                <i class="fas fa-eye"></i>
+            </button>
+            <button class="action-btn add-note-btn" onclick="openNoteModal('${docente.identificacion}')">
+                <i class="fas fa-plus"></i> Agregar Nota
+            </button>
+        </td>
+        <td class="text-center">${starRating}</td>
+      `;
             tbody.appendChild(row);
           });
 
@@ -447,16 +492,7 @@
           console.error("Error al buscar docentes:", error);
         }
       }
-      console.log("El script de carga de archivo está activo.");
 
-      // Esperar a que el DOM cargue antes de ejecutar el script
-      document.addEventListener("DOMContentLoaded", function () {
-        const form = document.getElementById("excel-upload-form");
-
-        if (form) {
-          form.addEventListener("submit", handleFileUpload);
-        }
-      });
 
       // Función principal para manejar la carga del archivo
       async function handleFileUpload(event) {
@@ -683,8 +719,7 @@
             // Contenido para la pestaña de Datos Básicos
             const fecha = new Date(data.marca_temporal).toISOString().split("T")[0];
             const basicHTML = `
-              <p><strong>Numero de documento:</strong> ${validateData(data.identificacion)}</p>
-
+              <p><strong>Número de documento:</strong> ${validateData(data.identificacion)}</p>
               <p><strong>Nombre Completo:</strong> ${validateData(data.nombre_completo)}</p>
               <p><strong>Fecha de registro formulario:</strong> ${validateData(fecha)}</p>
           `;
@@ -744,23 +779,24 @@
           });
       }
 
-      // Función para abrir el modal de notas y asignar la identificación del docente
       function openNoteModal(teacherIdentificacion) {
         const modal = document.getElementById("noteModal");
-        modal.style.display = "block";
+        console.log("Abriendo modal para:", teacherIdentificacion);
+        modal.classList.add("active");
 
         const form = document.getElementById("noteForm");
-        form.onsubmit = function (event) {
+        form.onsubmit = async function (event) {
           event.preventDefault();
-          submitNote(teacherIdentificacion);
+          await submitNote(teacherIdentificacion);
         };
       }
 
-      // Función para cerrar el modal de notas
       function closeNoteModal() {
         const modal = document.getElementById("noteModal");
-        modal.style.display = "none";
+        console.log("Cerrando modal");
+        modal.classList.remove("active");
       }
+
 
       async function getCurrentUser() {
         try {
@@ -784,16 +820,20 @@
         const nota = parseInt(select.value);
         console.log("submitNote: teacherIdentificacion =", teacherIdentificacion, "nota =", nota);
 
-        // Obtener el ID del usuario; por ejemplo, desde una variable global o localStorage
+        // Obtener los comentarios adicionales
+        const comentarioInterno = document.getElementById("str_Evi").value;
+        const comentarioExterno = document.getElementById("str_ClienteExterno").value;
+        console.log("submitNote: Comentario Interno =", comentarioInterno, "Comentario Externo =", comentarioExterno);
+
+        // Obtener el ID del usuario desde una variable global o localStorage
         const currentUser = window.currentUser || localStorage.getItem("currentUser");
         if (!currentUser) {
           Swal.fire({
             icon: 'warning',
             title: 'Usuario no encontrado',
             text: "No se encontró el usuario actual. Por favor, inicia sesión nuevamente."
-          }).then(() => {
-            closeNoteModal();
           });
+          closeNoteModal();
           return;
         }
         console.log("submitNote: currentUser =", currentUser);
@@ -805,7 +845,11 @@
               "Content-Type": "application/json",
               "X-User-Id": currentUser
             },
-            body: JSON.stringify({ nota: nota })
+            body: JSON.stringify({
+              nota: nota,
+              str_Evi: comentarioInterno,
+              str_ClienteExterno: comentarioExterno
+            })
           });
           console.log("submitNote: Response status =", response.status);
 
@@ -830,7 +874,7 @@
           });
           closeNoteModal();
 
-          // Actualizar la lista de docentes
+          // Actualizar la lista de docentes, si es necesario
           if (typeof renderDocentes === "function" && typeof currentPage !== "undefined") {
             console.log("submitNote: Actualizando lista de docentes para la página:", currentPage);
             renderDocentes(currentPage);

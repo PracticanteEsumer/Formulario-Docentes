@@ -1,7 +1,7 @@
 # =============================================================================
 # IMPORTS Y CONFIGURACIÓN
 # =============================================================================
-from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile, Query, Depends, Cookie
+from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile, Query, Depends, Cookie,Request    
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 import os
@@ -78,16 +78,22 @@ class Docente(BaseModel):
 
 class NotaModel(BaseModel):
     nota: int
+    str_Evi: str
+    str_ClienteExterno: str
+
 
 class CalificacionModel(BaseModel):
-    id: int = None
+    id: int = None  
     docente_identificacion: str
     user_id: str
     nota: int
+    str_Evi: str
+    str_ClienteExterno: str
+    
     created_at: datetime = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True  
 
 # =============================================================================
 # FUNCIONES UTILITARIAS
@@ -168,7 +174,7 @@ async def process_excel(file: UploadFile) -> dict:
     
     inserted_count = 0
     duplicate_count = 0
-    duplicate_emails = []
+    duplicate_ids = []
     
     def valida_valor(valor):
         return valor if pd.notna(valor) else "No aplica"
@@ -223,15 +229,15 @@ async def process_excel(file: UploadFile) -> dict:
             
             # Verificar duplicados por correo electrónico
             check_cursor = connection.cursor()
-            check_query = "SELECT COUNT(*) FROM docentes WHERE correo_electronico = %s"
-            check_cursor.execute(check_query, (correo_electronico,))
+            check_query = "SELECT COUNT(*) FROM docentes WHERE identificacion = %s"
+            check_cursor.execute(check_query, (identificacion,))
             result = check_cursor.fetchone()
             check_cursor.close()
             
             if result and result[0] > 0:
                 duplicate_count += 1
-                duplicate_emails.append(correo_electronico)
-                print(f"El correo {correo_electronico} ya se encuentra registrado. Saltando esta fila.")
+                duplicate_ids.append(identificacion)
+                print(f"La identificación {identificacion} ya se encuentra registrado. Saltando esta fila.")
                 continue
 
             await insert_docente(connection, docente_data)
@@ -243,7 +249,7 @@ async def process_excel(file: UploadFile) -> dict:
     return {
         "inserted": inserted_count,
         "duplicates": duplicate_count,
-        "duplicate_emails": duplicate_emails
+        "duplicate_ids": duplicate_ids
     }
 
 # =============================================================================
@@ -256,29 +262,30 @@ async def upload_file(file: UploadFile = File(...)):
     message = f"Se insertaron {result['inserted']} registros correctamente."
     if result["duplicates"] > 0:
         duplicate_message = (
-            "Error: Los siguientes correos ya se encuentran registrados:<br>" +
-            "<br>".join(result["duplicate_emails"])
+            "Error: Las siguientes identifiaciones ya se encuentran registrados:<br>" +
+            "<br>".join(str(id) for id in result["duplicate_ids"])
+
         )
         message += "<br>" + duplicate_message
     return {"success": True, "message": message}
 
 # Función para obtener todos los docentes de la BD
-def get_teachers():
+def get_teachers(current_user: str):
     connection = get_db()
     cursor = connection.cursor(dictionary=True)
     query = """ 
-        SELECT identificacion, marca_temporal, nombre_completo, correo_electronico, numero_celular, otro_numero_contacto,
-        envio_whatsapp, lugar_residencia, nivel_formacion, titulos_pregrado, areas_especializacion, resumen_experiencia, 
-        titulos_posgrado, certificaciones, disponibilidad_lunes, disponibilidad_martes, disponibilidad_miercoles, 
-        disponibilidad_jueves, disponibilidad_viernes, disponibilidad_sabado, disponibilidad_viajar, equipo_conexion_estable, estilo_formador, 
-        metodologia, casos_impacto, restriccion_contractual, hoja_vida, video_enlace, aviso_proteccion_datos, promedio
-        FROM docentes
+        SELECT d.identificacion, d.nombre_completo, d.correo_electronico, d.numero_celular, d.nivel_formacion, d.promedio,
+        c.nota as user_nota
+        FROM docentes d
+        LEFT JOIN calificaciones c 
+        ON d.identificacion = c.docente_identificacion AND c.user_id = %s
     """
-    cursor.execute(query)
+    cursor.execute(query, (current_user,))
     docentes = cursor.fetchall()
     cursor.close()
     connection.close()
     return docentes
+
 
 # Lista de columnas permitidas para filtrar docentes
 ALLOWED_FILTERS = {
@@ -355,25 +362,46 @@ def get_teacher_detail(teacher_id: str):
         raise HTTPException(status_code=404, detail="Docente no encontrado")
     return teacher
 
+from fastapi import Query, Request, HTTPException
+from fastapi.responses import JSONResponse
+
 # Endpoint para obtener docentes paginados
 @app.get("/docentes_paginated", response_class=JSONResponse)
-async def list_docentes_paginated(page: int = Query(1, alias="page"), per_page: int = Query(10, alias="per_page")):
+async def list_docentes_paginated(request: Request, page: int = Query(1, alias="page"), per_page: int = Query(10, alias="per_page")):
     connection = get_db()
     cursor = connection.cursor(dictionary=True)
+    
+    # Obtener el usuario actual desde la cookie o la autenticación
+    current_user = request.cookies.get("user_id")  # O usa tu método de autenticación
+    
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Usuario no autenticado")
+
+    # Consulta SQL para traer los docentes y la calificación del usuario actual (si existe)
     query = """
-        SELECT identificacion, nombre_completo, correo_electronico, numero_celular, otro_numero_contacto, 
-               nivel_formacion, areas_especializacion, promedio
-        FROM docentes
+        SELECT d.identificacion, d.nombre_completo, d.correo_electronico, d.numero_celular, 
+               d.nivel_formacion, d.areas_especializacion, d.promedio, 
+               c.nota as user_nota
+        FROM docentes d
+        LEFT JOIN calificaciones c 
+        ON d.identificacion = c.docente_identificacion AND c.user_id = %s
         LIMIT %s OFFSET %s
     """
     offset = (page - 1) * per_page
-    cursor.execute(query, (per_page, offset))
+    cursor.execute(query, (current_user, per_page, offset))
     docentes = cursor.fetchall()
-    cursor.execute("SELECT COUNT(*) FROM docentes")
-    total_docentes = cursor.fetchone()["COUNT(*)"]
+
+    # Obtener el total de docentes
+    cursor.execute("SELECT COUNT(*) as total FROM docentes")
+    total_docentes = cursor.fetchone()["total"]
+
+    # Cálculo de total de páginas
+    total_pages = (total_docentes + per_page - 1) // per_page
+
     cursor.close()
     connection.close()
-    total_pages = (total_docentes + per_page - 1) // per_page
+
+    # Armar la respuesta JSON
     return {
         "docentes": docentes,
         "total_docentes": total_docentes,
@@ -382,48 +410,65 @@ async def list_docentes_paginated(page: int = Query(1, alias="page"), per_page: 
         "total_pages": total_pages
     }
 
-# Endpoint para buscar docentes
+
 @app.get("/docentes_search", response_class=JSONResponse)
 async def search_docentes(query: str = Query(..., alias="query")):
     connection = get_db()
     cursor = connection.cursor(dictionary=True)
+    
+    # Preparamos el parámetro para la búsqueda textual
+    search_param = f"%{query.lower()}%"
+    
+    # Intentamos convertir la query a un número para filtrar por nota (promedio)
+    try:
+        numeric_value = float(query)
+    except ValueError:
+        numeric_value = -1  # Valor que no se encontrará (suponiendo que el promedio no puede ser negativo)
+
+    # Se agregan 4 condiciones: identificación, nombre, nivel y promedio
     search_query = """
         SELECT identificacion, nombre_completo, correo_electronico, numero_celular, otro_numero_contacto, 
                nivel_formacion, areas_especializacion, promedio
         FROM docentes
-        WHERE LOWER(nombre_completo) LIKE %s
-           OR LOWER(correo_electronico) LIKE %s
-           OR LOWER(numero_celular) LIKE %s
+        WHERE LOWER(identificacion) LIKE %s
+           OR LOWER(nombre_completo) LIKE %s
            OR LOWER(nivel_formacion) LIKE %s
-           OR LOWER(areas_especializacion) LIKE %s
+           OR promedio = %s
     """
-    search_param = f"%{query.lower()}%"
-    cursor.execute(search_query, (search_param, search_param, search_param, search_param, search_param))
+    cursor.execute(search_query, (search_param, search_param, search_param, numeric_value))
     docentes = cursor.fetchall()
     cursor.close()
     connection.close()
     return {"docentes": docentes}
 
+
+
 # Endpoint para la página de administración (HTML) que lista docentes
 @app.get("/admin", response_class=HTMLResponse)
-async def list_docentes():
-    docentes = get_teachers()
+async def list_docentes(request: Request):
+    # Supongamos que obtienes el usuario actual de las cookies o autenticación
+    current_user = request.cookies.get("user_id")  # O usa tu método de autenticación
+    docentes = get_teachers(current_user)
     template_path = os.path.join(os.path.dirname(__file__), "../frontend/tableInfoDocentes.html")
     with open(template_path, "r", encoding="utf-8") as f:
         html_content = f.read()
+    
     table_rows = ""
     for docente in docentes:
+        user_nota = docente['user_nota'] if docente['user_nota'] else "No calificado"
         table_rows += f"""
             <tr>
+                <td>{docente['identificacion']}</td>
                 <td>{docente['nombre_completo']}</td>
-                <td>{docente['correo_electronico']}</td>
-                <td>{docente['numero_celular']}</td>
                 <td>{docente['nivel_formacion']}</td>
                 <td>{docente['promedio']}</td>
+                <td>{user_nota}</td>
             </tr>
         """
+    
     html_content = html_content.replace("<!-- rows-placeholder -->", table_rows)
     return HTMLResponse(content=html_content)
+
 
 # =============================================================================
 # RUTAS DE AUTENTICACIÓN Y USUARIOS
@@ -467,7 +512,7 @@ def get_current_user(user_id: str = Cookie(...)):
 @app.post("/logout")
 async def logout(response: Response):
     # Se elimina la cookie "user_id"
-    response.delete_cookie("user_id")
+    response.delete_cookie("user_id")   
     return RedirectResponse(url="/", status_code=303)
 
 # =============================================================================
@@ -475,25 +520,27 @@ async def logout(response: Response):
 # =============================================================================
 # Función para registrar la nota de un docente y actualizar sus datos
 
-async def registrar_nota(connection, docente_identificacion: str, nueva_nota: int, current_user: str):
+async def registrar_nota(connection, docente_identificacion: str, nueva_nota: int, current_user: str, str_Evi: str, str_ClienteExterno: str):
     cursor = connection.cursor(dictionary=True)
-    # Validar que el usuario no haya calificado previamente al docente
-    query_check = """
-        SELECT * FROM calificaciones 
-        WHERE docente_identificacion = %s AND user_id = %s
-    """
-    cursor.execute(query_check, (docente_identificacion, current_user))
-    if cursor.fetchone():
-        cursor.close()
-        connection.close()
-        raise HTTPException(status_code=400, detail="Ya has calificado a este docente.")
     try:
-        # Insertar la calificación
-        query_insert = """
-            INSERT INTO calificaciones (docente_identificacion, user_id, nota, created_at)
-            VALUES (%s, %s, %s, NOW())
+        # Verificar si el usuario ya calificó a este docente
+        query_check = """
+            SELECT * FROM calificaciones 
+            WHERE docente_identificacion = %s AND user_id = %s
         """
-        cursor.execute(query_insert, (docente_identificacion, current_user, nueva_nota))
+        print(f"Verificando si el usuario {current_user} ya calificó al docente {docente_identificacion}...")
+        cursor.execute(query_check, (docente_identificacion, current_user))
+        existing = cursor.fetchone()
+        if existing:
+            raise HTTPException(status_code=400, detail="Ya has calificado a este docente.")
+        
+        # Insertar la nueva calificación en la tabla calificaciones
+        query_insert = """
+            INSERT INTO calificaciones (docente_identificacion, user_id, nota, str_Evi, str_ClienteExterno, created_at)
+            VALUES (%s, %s, %s, %s, %s, NOW())
+        """
+        print("Insertando nueva calificación...")
+        cursor.execute(query_insert, (docente_identificacion, current_user, nueva_nota, str_Evi, str_ClienteExterno))
         
         # Obtener la puntuación total y el total de usuarios del docente
         query_select = """
@@ -507,12 +554,14 @@ async def registrar_nota(connection, docente_identificacion: str, nueva_nota: in
             raise HTTPException(status_code=404, detail="Docente no encontrado")
         puntuacion_total = row["puntuacion_total"]
         total_usuarios = row["total_usuarios"]
+        print(f"Puntuación actual: {puntuacion_total} con {total_usuarios} usuarios.")
         
         # Actualizar la puntuación y calcular el nuevo promedio
         nueva_puntuacion_total = puntuacion_total + nueva_nota
         nuevo_total_usuarios = total_usuarios + 1
         nuevo_promedio = nueva_puntuacion_total / nuevo_total_usuarios
         nuevo_promedio_decimal = Decimal(nuevo_promedio).quantize(Decimal("0.00"), rounding=ROUND_HALF_UP)
+        print(f"Nueva puntuación total: {nueva_puntuacion_total}, Total usuarios: {nuevo_total_usuarios}, Nuevo promedio: {nuevo_promedio_decimal}")
         
         # Actualizar el registro del docente
         query_update = """
@@ -521,14 +570,20 @@ async def registrar_nota(connection, docente_identificacion: str, nueva_nota: in
             WHERE identificacion = %s
         """
         cursor.execute(query_update, (nueva_puntuacion_total, nuevo_total_usuarios, nuevo_promedio_decimal, docente_identificacion))
+        
         connection.commit()
+        print("Transacción completada exitosamente.")
     except Exception as e:
         connection.rollback()
+        print(f"Error durante el registro de nota: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error al registrar la nota: {str(e)}")
     finally:
         cursor.close()
         connection.close()
+    
     return {"mensaje": "Nota registrada exitosamente", "promedio_actual": str(nuevo_promedio_decimal)}
+
+
 
 # Endpoint para registrar la nota de un docente
 @app.post("/docentes/{docente_identificacion}/nota", response_class=JSONResponse)
@@ -538,5 +593,13 @@ async def registrar_nota_endpoint(
     connection = Depends(get_db),
     current_user: str = Depends(get_current_user)
 ):
-    resultado = await registrar_nota(connection, docente_identificacion, nota_model.nota, current_user)
+    resultado = await registrar_nota(
+        connection, 
+        docente_identificacion, 
+        nota_model.nota, 
+        current_user, 
+        nota_model.str_Evi, 
+        nota_model.str_ClienteExterno
+    )
     return resultado
+
