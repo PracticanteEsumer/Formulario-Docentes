@@ -584,6 +584,157 @@ async def registrar_nota(connection, docente_identificacion: str, nueva_nota: in
     return {"mensaje": "Nota registrada exitosamente", "promedio_actual": str(nuevo_promedio_decimal)}
 
 
+class EditarNotaRequest(BaseModel):
+    nueva_nota: int
+    str_Evi: Optional[str] = None
+    str_ClienteExterno: Optional[str] = None
+        
+    class Config:
+        from_attributes = True
+        
+    
+
+# Modelo para la salida (opcional, para documentación y consistencia)
+class CalificacionModel(BaseModel):
+    id: Optional[int] = None
+    docente_identificacion: str
+    user_id: str
+    nota: int
+    str_Evi: Optional[str] = None
+    str_ClienteExterno: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+# Endpoint para editar la nota de un docente
+@app.put("/docentes/{docente_identificacion}/editar_nota", response_class=JSONResponse)
+async def editar_nota_endpoint(
+    docente_identificacion: str, 
+    nota_request: EditarNotaRequest, 
+    current_user: str = Depends(get_current_user),
+    connection = Depends(get_db)
+):
+    # Validar la nueva nota (entre 1 y 5)
+    if nota_request.nueva_nota < 1 or nota_request.nueva_nota > 5:
+        raise HTTPException(status_code=400, detail="La nota debe estar entre 1 y 5.")
+
+    try:
+        resultado = await editar_nota(
+            connection, 
+            docente_identificacion, 
+            nota_request.nueva_nota, 
+            current_user, 
+            nota_request.str_Evi, 
+            nota_request.str_ClienteExterno
+        )
+        return resultado
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
+async def editar_nota(connection, docente_identificacion: str, nueva_nota: int, current_user: str, str_Evi: str, str_ClienteExterno: str):
+    cursor = connection.cursor(dictionary=True)
+    try:
+        # Verificar si el usuario ya calificó a este docente
+        query_check = """
+            SELECT * FROM calificaciones 
+            WHERE docente_identificacion = %s AND user_id = %s
+        """
+        print(f"Verificando si el usuario {current_user} ya calificó al docente {docente_identificacion}...")
+        cursor.execute(query_check, (docente_identificacion, current_user))
+        existing = cursor.fetchone()
+        
+        if not existing:
+            raise HTTPException(status_code=404, detail="No has calificado a este docente aún.")
+        
+        # Guardar la calificación anterior para actualizar correctamente la puntuación total
+        nota_anterior = existing["nota"]
+        
+        # Actualizar la calificación en la tabla calificaciones (sin updated_at)
+        query_update_calificacion = """
+            UPDATE calificaciones 
+            SET nota = %s, str_Evi = %s, str_ClienteExterno = %s
+            WHERE docente_identificacion = %s AND user_id = %s
+        """
+        print(f"Actualizando calificación de {nota_anterior} a {nueva_nota}...")
+        cursor.execute(query_update_calificacion, (nueva_nota, str_Evi, str_ClienteExterno, docente_identificacion, current_user))
+        
+        # Obtener la puntuación total y el total de usuarios del docente
+        query_select = """
+            SELECT puntuacion_total, total_usuarios 
+            FROM docentes 
+            WHERE identificacion = %s
+        """
+        cursor.execute(query_select, (docente_identificacion,))
+        row = cursor.fetchone()
+        
+        if row is None:
+            raise HTTPException(status_code=404, detail="Docente no encontrado")
+        
+        puntuacion_total = row["puntuacion_total"]
+        total_usuarios = row["total_usuarios"]
+        print(f"Puntuación actual: {puntuacion_total} con {total_usuarios} usuarios.")
+        
+        # Recalcular la puntuación total restando la nota anterior y sumando la nueva
+        nueva_puntuacion_total = puntuacion_total - nota_anterior + nueva_nota
+        nuevo_promedio = nueva_puntuacion_total / total_usuarios
+        nuevo_promedio_decimal = Decimal(nuevo_promedio).quantize(Decimal("0.00"), rounding=ROUND_HALF_UP)
+        print(f"Nueva puntuación total: {nueva_puntuacion_total}, Nuevo promedio: {nuevo_promedio_decimal}")
+        
+        # Actualizar el registro del docente con la nueva puntuación y promedio
+        query_update_docente = """
+            UPDATE docentes 
+            SET puntuacion_total = %s, promedio = %s
+            WHERE identificacion = %s
+        """
+        cursor.execute(query_update_docente, (nueva_puntuacion_total, nuevo_promedio_decimal, docente_identificacion))
+        
+        connection.commit()
+        print("Transacción de actualización completada exitosamente.")
+    except Exception as e:
+        connection.rollback()
+        print(f"Error durante la edición de la nota: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error al editar la nota: {str(e)}")
+    finally:
+        cursor.close()
+        connection.close()
+    
+    return {"mensaje": "Nota editada exitosamente", "promedio_actual": str(nuevo_promedio_decimal)}
+
+
+def get_teachers_with_rating(current_user: str):
+    connection = get_db()
+    cursor = connection.cursor(dictionary=True)
+    
+    query = """
+        SELECT 
+            d.identificacion,
+            d.nombre_completo,
+            d.correo_electronico,
+            d.numero_celular,
+            d.nivel_formacion,
+            d.promedio,
+            c.nota AS user_nota,
+            c.str_Evi,
+            c.str_ClienteExterno
+        FROM docentes d
+        LEFT JOIN calificaciones c 
+            ON d.identificacion = c.docente_identificacion AND c.user_id = %s
+    """
+    cursor.execute(query, (current_user,))
+    docentes = cursor.fetchall()
+    cursor.close()
+    connection.close()
+    return docentes
+
+
+
 
 # Endpoint para registrar la nota de un docente
 @app.post("/docentes/{docente_identificacion}/nota", response_class=JSONResponse)

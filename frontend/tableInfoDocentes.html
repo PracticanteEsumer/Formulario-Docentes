@@ -132,6 +132,114 @@
       transition: background-color 0.3s ease;
     }
   </style>
+  <style>
+    /* ---------- Modal de Actualización de Nota ---------- */
+    .modal-update-note {
+      display: none;
+      /* Oculto por defecto */
+      position: fixed;
+      z-index: 1200;
+      /* Un z-index distinto para evitar conflictos */
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      background-color: rgba(0, 0, 0, 0.6);
+      /* Fondo semitransparente */
+    }
+
+    /* Clase para activar el modal y centrar su contenido */
+    .modal-update-note.active {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .modal-update-note-content {
+      background-color: #f9f9f9;
+      /* Fondo ligeramente distinto */
+      padding: 25px;
+      border-radius: 10px;
+      width: 90%;
+      max-width: 500px;
+      box-shadow: 0 6px 10px rgba(0, 0, 0, 0.25);
+      animation: updateNoteSlideIn 0.3s;
+      position: relative;
+    }
+
+    .modal-update-note-close {
+      position: absolute;
+      top: 10px;
+      right: 15px;
+      color: #888;
+      font-size: 26px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .modal-update-note-close:hover {
+      color: #444;
+    }
+
+    /* ---------- Estilos del Formulario del Modal de Actualización ---------- */
+    #updateNoteForm {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    #updateNoteForm label {
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+
+    #updateNoteForm input,
+    #updateNoteForm select {
+      width: 100%;
+      padding: 12px;
+      font-size: 16px;
+      margin-bottom: 10px;
+      border: 1px solid #bbb;
+      border-radius: 5px;
+      transition: border-color 0.3s;
+    }
+
+    #updateNoteForm input:focus,
+    #updateNoteForm select:focus {
+      border-color: #0056b3;
+      outline: none;
+    }
+
+    #updateNoteForm button {
+      background-color: #0056b3;
+      color: #fff;
+      border: none;
+      padding: 12px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background-color 0.3s;
+      width: 100%;
+    }
+
+    #updateNoteForm button:hover {
+      background-color: #003d80;
+    }
+
+    /* ---------- Animación ---------- */
+    @keyframes updateNoteSlideIn {
+      from {
+        transform: translateY(-50px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+  </style>
 
 
 </head>
@@ -305,6 +413,34 @@
       </div>
     </div>
 
+    <!-- Modal para Actualizar Nota -->
+    <div id="updateNoteModal" class="modal-update-note">
+      <div class="modal-update-note-content">
+        <span class="modal-update-note-close" onclick="closeUpdateNoteModal()">&times;</span>
+        <h2>Actualizar Nota</h2>
+        <form id="updateNoteForm">
+          <label for="updateNoteSelect">Selecciona una nueva nota:</label>
+          <select id="updateNoteSelect" name="nota" required>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+          </select>
+          <label for="update_str_Evi">Comentario de Evaluación Interna:</label>
+          <input type="text" id="update_str_Evi" name="str_Evi" required placeholder="Ingrese el comentario." />
+          <label for="update_str_ClienteExterno">Comentario de Evaluación Externa:</label>
+          <input type="text" id="update_str_ClienteExterno" name="str_ClienteExterno" required
+            placeholder="Ingrese el comentario." />
+          <button type="submit">Guardar Cambios</button>
+        </form>
+      </div>
+    </div>
+
+
+
+
+
 
     <script>
       let currentPage = 1;
@@ -398,9 +534,9 @@
           <button class="action-btn add-note-btn" onclick="openNoteModal('${docente.identificacion}')">
               <i class="fas fa-plus"></i> Agregar Nota
           </button>
-          <button class="action-btn edit-btn" onclick="openEditModal('${docente.identificacion}')">
-              <i class="fas fa-edit"></i> Editar
-          </button>
+           <button class="action-btn edit-note-btn" onclick="openUpdateNoteModal('${docente.identificacion}', ${docente.user_nota}, '${docente.str_evi}', '${docente.str_cliente_externo}')">
+              <i class="fas fa-edit"></i> Editar Nota
+            </button> 
           <button class="action-btn delete-btn" onclick="deleteDocente('${docente.identificacion}')">
               <i class="fas fa-trash"></i> 
           </button>
@@ -899,6 +1035,109 @@
           closeNoteModal();
         }
       };
+
+      // Función para abrir el modal de Actualización de Nota con los valores precargados
+      function openUpdateNoteModal(teacherIdentificacion, userNota, strEvi, strClienteExterno) {
+        const modal = document.getElementById("updateNoteModal");
+        modal.classList.add("active");
+
+        // Pre-cargar los valores actuales en los inputs del modal de edición
+        document.getElementById("updateNoteSelect").value = userNota ? userNota : '1';
+        document.getElementById("update_str_Evi").value = strEvi || "";
+        document.getElementById("update_str_ClienteExterno").value = strClienteExterno || "";
+
+        // Asignar el evento submit al formulario de edición
+        const form = document.getElementById("updateNoteForm");
+        form.onsubmit = async function (event) {
+          event.preventDefault();
+          await submitEditNote(teacherIdentificacion);
+        };
+      }
+
+
+      // Función para cerrar el modal de Actualización de Nota
+      function closeUpdateNoteModal() {
+        const modal = document.getElementById("updateNoteModal");
+        modal.classList.remove("active");
+      }
+
+      async function submitEditNote(teacherIdentificacion) {
+        // Obtener la nueva nota y comentarios desde el formulario de edición
+        const select = document.getElementById("updateNoteSelect");
+        const nuevaNota = parseInt(select.value);
+        const comentarioInterno = document.getElementById("update_str_Evi").value;
+        const comentarioExterno = document.getElementById("update_str_ClienteExterno").value;
+
+        // Obtener el ID del usuario desde una variable global o localStorage
+        const currentUser = window.currentUser || localStorage.getItem("currentUser");
+        if (!currentUser) {
+          Swal.fire({
+            icon: 'warning',
+            title: 'Usuario no encontrado',
+            text: "No se encontró el usuario actual. Por favor, inicia sesión nuevamente."
+          }).then(() => {
+            closeUpdateNoteModal();
+          });
+          return;
+        }
+        console.log("submitEditNote: teacherIdentificacion =", teacherIdentificacion, "nuevaNota =", nuevaNota);
+        console.log("submitEditNote: currentUser =", currentUser);
+
+        try {
+          const response = await fetch(`/docentes/${teacherIdentificacion}/editar_nota`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              "X-User-Id": currentUser
+            },
+            body: JSON.stringify({
+              nueva_nota: nuevaNota,
+              str_Evi: comentarioInterno,
+              str_ClienteExterno: comentarioExterno
+            })
+          });
+          console.log("submitEditNote: Response status =", response.status);
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            console.log("submitEditNote: Error response data =", errorData);
+            Swal.fire({
+              icon: 'error',
+              title: 'Error',
+              text: "Error al editar la nota: " + (errorData.detail || "Error desconocido")
+            }).then(() => {
+              closeUpdateNoteModal();
+            });
+            return;
+          }
+
+          const data = await response.json();
+          console.log("submitEditNote: Success response data =", data);
+          Swal.fire({
+            icon: 'success',
+            title: 'Éxito',
+            text: "Nota editada con éxito. Promedio actual: " + data.promedio_actual
+          });
+          closeUpdateNoteModal();
+
+          // Actualizar la lista de docentes, si es necesario
+          if (typeof renderDocentes === "function" && typeof currentPage !== "undefined") {
+            console.log("submitEditNote: Actualizando lista de docentes para la página:", currentPage);
+            renderDocentes(currentPage);
+          }
+        } catch (error) {
+          console.error("submitEditNote: Error al editar la nota:", error);
+          Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: "Error al editar la nota."
+          }).then(() => {
+            closeUpdateNoteModal();
+          });
+        }
+      }
+
+
 
 
       // Inicializar la tabla de docentes
