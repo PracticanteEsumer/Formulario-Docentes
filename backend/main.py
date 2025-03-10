@@ -733,6 +733,33 @@ def get_teachers_with_rating(current_user: str):
     connection.close()
     return docentes
 
+@app.get("/docente/{docente_identificacion}/rating", response_class=JSONResponse)
+async def get_rating_for_teacher(
+    docente_identificacion: str, 
+    current_user: str = Depends(get_current_user)
+):
+    connection = get_db()
+    cursor = connection.cursor(dictionary=True)
+    
+    query = """
+        SELECT 
+            nota,
+            COALESCE(str_Evi, '') AS str_Evi,
+            COALESCE(str_ClienteExterno, '') AS str_ClienteExterno
+        FROM calificaciones
+        WHERE docente_identificacion = %s AND user_id = %s
+    """
+    cursor.execute(query, (docente_identificacion, current_user))
+    rating = cursor.fetchone()
+    cursor.close()
+    connection.close()
+    
+    # Si no hay calificación, se retornan valores por defecto
+    if not rating:
+        rating = {"nota": None, "str_Evi": "", "str_ClienteExterno": ""}
+    return rating
+
+
 
 
 

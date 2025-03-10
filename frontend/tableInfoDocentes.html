@@ -534,9 +534,10 @@
           <button class="action-btn add-note-btn" onclick="openNoteModal('${docente.identificacion}')">
               <i class="fas fa-plus"></i> Agregar Nota
           </button>
-           <button class="action-btn edit-note-btn" onclick="openUpdateNoteModal('${docente.identificacion}', ${docente.user_nota}, '${docente.str_evi}', '${docente.str_cliente_externo}')">
-              <i class="fas fa-edit"></i> Editar Nota
-            </button> 
+           <button class="action-btn edit-note-btn" onclick="openUpdateNoteModal('${docente.identificacion}')">
+  <i class="fas fa-edit"></i> Editar Nota
+</button>
+ 
           <button class="action-btn delete-btn" onclick="deleteDocente('${docente.identificacion}')">
               <i class="fas fa-trash"></i> 
           </button>
@@ -1037,23 +1038,53 @@
       };
 
       // Función para abrir el modal de Actualización de Nota con los valores precargados
-      function openUpdateNoteModal(teacherIdentificacion, userNota, strEvi, strClienteExterno) {
-        const modal = document.getElementById("updateNoteModal");
-        modal.classList.add("active");
+      async function openUpdateNoteModal(teacherIdentificacion) {
+        console.log("Abriendo modal de editar para:", teacherIdentificacion);
 
-        // Pre-cargar los valores actuales en los inputs del modal de edición
-        document.getElementById("updateNoteSelect").value = userNota ? userNota : '1';
-        document.getElementById("update_str_Evi").value = strEvi || "";
-        document.getElementById("update_str_ClienteExterno").value = strClienteExterno || "";
+        try {
+          // Llamar al endpoint para obtener la calificación del docente para el usuario actual
+          const response = await fetch(`http://localhost:8000/docente/${teacherIdentificacion}/rating`);
+          if (!response.ok) {
+            throw new Error("Error al obtener la calificación");
+          }
+          const rating = await response.json();
+          console.log("Rating recibido:", rating);
 
-        // Asignar el evento submit al formulario de edición
-        const form = document.getElementById("updateNoteForm");
-        form.onsubmit = async function (event) {
-          event.preventDefault();
-          await submitEditNote(teacherIdentificacion);
-        };
+          // Si no hay nota registrada, mostramos una alerta y no abrimos el modal
+          if (rating.nota === null || rating.nota === "" || rating.nota === undefined) {
+            Swal.fire({
+              icon: 'info',
+              title: 'Sin calificación',
+              text: 'Este docente no tiene una nota registrada para editar.'
+            });
+            return;
+          }
+
+          // Si existe calificación, procedemos a abrir el modal
+          const modal = document.getElementById("updateNoteModal");
+          modal.classList.add("active");
+
+          // Asignar valores a los inputs del modal utilizando los nombres exactos de la BD
+          document.getElementById("updateNoteSelect").value = rating.nota || '1';
+          document.getElementById("update_str_Evi").value = rating.str_Evi || "";
+          document.getElementById("update_str_ClienteExterno").value = rating.str_ClienteExterno || "";
+
+          // Asignar el evento submit al formulario de edición
+          const form = document.getElementById("updateNoteForm");
+          form.onsubmit = async function (event) {
+            event.preventDefault();
+            await submitEditNote(teacherIdentificacion);
+          };
+
+        } catch (error) {
+          console.error("Error al abrir el modal de edición:", error);
+          Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: "No se pudo obtener la información de calificación."
+          });
+        }
       }
-
 
       // Función para cerrar el modal de Actualización de Nota
       function closeUpdateNoteModal() {
