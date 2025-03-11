@@ -239,6 +239,12 @@
         opacity: 1;
       }
     }
+
+    /* Ejemplo simple para el indicador de carga */
+    .loading-spinner {
+      font-style: italic;
+      color: #555;
+    }
   </style>
 
 
@@ -327,8 +333,8 @@
     <!-- Sección de carga de archivos debajo del paginador -->
     <div class="file-upload">
       <form id="excel-upload-form" enctype="multipart/form-data">
-        <label for="file">Selecciona un archivo Excel (.xlsx):</label>
-        <input type="file" id="file" name="file" accept=".xlsx" required />
+        <label for="file">Selecciona un archivo Excel (.xlsx, .xls):</label>
+        <input type="file" id="file" name="file" accept=".xlsx, .xls" required />
         <button type="submit">Subir</button>
       </form>
       <!-- Mensaje de éxito o error -->
@@ -436,10 +442,6 @@
         </form>
       </div>
     </div>
-
-
-
-
 
 
     <script>
@@ -631,13 +633,18 @@
       }
 
 
+      // Vincula el evento submit al formulario
+      document
+        .getElementById("excel-upload-form")
+        .addEventListener("submit", handleFileUpload);
+
       // Función principal para manejar la carga del archivo
       async function handleFileUpload(event) {
         console.log("Evento submit capturado.");
-        event.preventDefault(); // Evitar recarga de la página
+        event.preventDefault(); // Evita recargar la página
 
         const messageElement = document.getElementById("message");
-        messageElement.innerHTML = ""; // Limpiar mensajes previos
+        messageElement.innerHTML = ""; // Limpia mensajes previos
 
         const fileInput = document.getElementById("file");
         const file = fileInput.files[0];
@@ -652,14 +659,11 @@
 
         // Validar que el archivo sea Excel
         if (!isValidExcelFile(file)) {
-          showMessage(
-            "El archivo debe ser un archivo Excel (.xlsx o .xls).",
-            "red"
-          );
+          showMessage("El archivo debe ser un archivo Excel (.xlsx o .xls).", "red");
           return;
         }
 
-        // Crear objeto FormData
+        // Crear objeto FormData y agregar el archivo
         const formData = new FormData();
         formData.append("file", file);
 
@@ -680,19 +684,18 @@
           handleServerResponse(response);
         } catch (error) {
           console.error("Error en la solicitud:", error);
-          showMessage(
-            "Error al intentar cargar el archivo. Intenta nuevamente.",
-            "red"
-          );
+          showMessage("Error al intentar cargar el archivo. Intenta nuevamente.", "red");
         }
       }
 
       // Función para validar si el archivo es un Excel
       function isValidExcelFile(file) {
+        // Lista de MIME types permitidos
         const allowedTypes = [
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "application/vnd.ms-excel",
+          "application/vnd.ms-excel"
         ];
+        console.log("Tipo MIME del archivo:", file.type);
         return allowedTypes.includes(file.type);
       }
 
@@ -701,17 +704,17 @@
         console.log("Enviando solicitud al backend...");
         const response = await fetch("/uploadfile/", {
           method: "POST",
-          body: formData,
+          body: formData
         });
-
-        return response.json(); // Convertir la respuesta en JSON
+        console.log("Respuesta del servidor:", response);
+        return response.json(); // Se espera una respuesta en JSON
       }
 
       // Función para manejar la respuesta del backend
       function handleServerResponse(response) {
-        // Supongamos que response es un objeto JSON con 'success' y 'message'
+        // Se espera que el backend envíe un JSON con 'success' y 'message'
         if (response.success) {
-          showMessage(response.message, "green"); // Muestra el mensaje de éxito
+          showMessage(response.message, "green");
         } else {
           showMessage("Hubo un problema: " + response.message, "red");
         }
