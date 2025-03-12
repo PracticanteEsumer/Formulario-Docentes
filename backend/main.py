@@ -362,9 +362,6 @@ def get_teacher_detail(teacher_id: str):
         raise HTTPException(status_code=404, detail="Docente no encontrado")
     return teacher
 
-from fastapi import Query, Request, HTTPException
-from fastapi.responses import JSONResponse
-
 # Endpoint para obtener docentes paginados
 @app.get("/docentes_paginated", response_class=JSONResponse)
 async def list_docentes_paginated(request: Request, page: int = Query(1, alias="page"), per_page: int = Query(10, alias="per_page")):
@@ -781,3 +778,117 @@ async def registrar_nota_endpoint(
     )
     return resultado
 
+async def eliminar_nota(connection, docente_identificacion: str, current_user: str):
+    cursor = connection.cursor(dictionary=True)
+    try:
+        # Verificar si existe una calificación para este docente y usuario
+        query_check = """
+            SELECT * FROM calificaciones 
+            WHERE docente_identificacion = %s AND user_id = %s
+        """
+        print(f"Verificando existencia de calificación para el docente {docente_identificacion} por el usuario {current_user}...")
+        cursor.execute(query_check, (docente_identificacion, current_user))
+        existing = cursor.fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="No existe calificación para este docente.")
+
+        # Obtener la nota que se eliminará
+        nota_a_eliminar = existing["nota"]
+
+        # Eliminar la calificación de la tabla calificaciones
+        query_delete = """
+            DELETE FROM calificaciones
+            WHERE docente_identificacion = %s AND user_id = %s
+        """
+        cursor.execute(query_delete, (docente_identificacion, current_user))
+
+        # Obtener la puntuación total y el total de usuarios del docente
+        query_select = """
+            SELECT puntuacion_total, total_usuarios 
+            FROM docentes 
+            WHERE identificacion = %s
+        """
+        cursor.execute(query_select, (docente_identificacion,))
+        row = cursor.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Docente no encontrado")
+        
+        puntuacion_total = row["puntuacion_total"]
+        total_usuarios = row["total_usuarios"]
+        print(f"Puntuación actual: {puntuacion_total} con {total_usuarios} usuarios.")
+
+        # Recalcular la puntuación total y el promedio:
+        # Restar la nota eliminada y disminuir el total de usuarios.
+        nueva_puntuacion_total = puntuacion_total - nota_a_eliminar
+        nuevo_total_usuarios = total_usuarios - 1
+
+        if nuevo_total_usuarios > 0:
+            nuevo_promedio = nueva_puntuacion_total / nuevo_total_usuarios
+            nuevo_promedio_decimal = Decimal(nuevo_promedio).quantize(Decimal("0.00"), rounding=ROUND_HALF_UP)
+        else:
+            nuevo_promedio_decimal = "0.00"
+            nueva_puntuacion_total = 0
+            nuevo_total_usuarios = 0
+
+        # Actualizar el registro del docente en la tabla docentes
+        query_update_docente = """
+            UPDATE docentes 
+            SET puntuacion_total = %s, total_usuarios = %s, promedio = %s
+            WHERE identificacion = %s
+        """
+        cursor.execute(query_update_docente, (nueva_puntuacion_total, nuevo_total_usuarios, nuevo_promedio_decimal, docente_identificacion))
+
+        connection.commit()
+        print("Calificación eliminada y docente actualizado correctamente.")
+    except Exception as e:
+        connection.rollback()
+        print(f"Error al eliminar la nota: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error al eliminar la nota: {str(e)}")
+    finally:
+        cursor.close()
+        connection.close()
+    
+    return {"mensaje": "Calificación eliminada exitosamente", "promedio_actual": str(nuevo_promedio_decimal)}
+
+
+
+@app.delete("/docentes/{docente_identificacion}/eliminar_nota", response_class=JSONResponse)
+async def eliminar_nota_endpoint(
+    docente_identificacion: str,
+    current_user: str = Depends(get_current_user),
+    connection = Depends(get_db)
+):
+    try:
+        resultado = await eliminar_nota(connection, docente_identificacion, current_user)
+        return resultado
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+    
+@app.get("/docente/{docente_identificacion}/rating", response_class=JSONResponse)
+async def get_rating_for_teacher(
+    docente_identificacion: str, 
+    current_user: str = Depends(get_current_user)
+):
+    connection = get_db()
+    cursor = connection.cursor(dictionary=True)
+    
+    query = """
+        SELECT 
+            nota,
+            COALESCE(str_Evi, '') AS str_Evi,
+            COALESCE(str_ClienteExterno, '') AS str_ClienteExterno
+        FROM calificaciones
+        WHERE docente_identificacion = %s AND user_id = %s
+    """
+    cursor.execute(query, (docente_identificacion, current_user))
+    rating = cursor.fetchone()
+    cursor.close()
+    connection.close()
+    
+    # Si no hay calificación, retornamos valores por defecto
+    if not rating:
+        rating = {"nota": None, "str_Evi": "", "str_ClienteExterno": ""}
+    return rating

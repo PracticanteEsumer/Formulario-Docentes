@@ -342,9 +342,10 @@
     </div>
 
     <!-- Modal de detalle del docente con pestañas -->
+    <!-- Modal de detalle del docente con pestañas -->
     <div class="modal fade" id="teacherDetailModal" tabindex="-1" aria-labelledby="teacherDetailModalLabel"
       aria-hidden="true">
-      <div class="modal-dialog modal-xl"> <!-- Modal extra grande para mayor comodidad -->
+      <div class="modal-dialog modal-xl">
         <div class="modal-content">
           <div class="modal-header bg-primary text-white">
             <h5 class="modal-title" id="teacherDetailModalLabel">Detalle del Docente</h5>
@@ -364,13 +365,16 @@
               </li>
               <li class="nav-item" role="presentation">
                 <button class="nav-link" id="education-tab" data-bs-toggle="tab" data-bs-target="#education"
-                  type="button" role="tab" aria-controls="education" aria-selected="false">Formación y
-                  Especialización</button>
+                  type="button" role="tab" aria-controls="education" aria-selected="false">Formación</button>
               </li>
               <li class="nav-item" role="presentation">
                 <button class="nav-link" id="availability-tab" data-bs-toggle="tab" data-bs-target="#availability"
-                  type="button" role="tab" aria-controls="availability" aria-selected="false">Disponibilidad y
-                  Otros</button>
+                  type="button" role="tab" aria-controls="availability" aria-selected="false">Disponibilidad</button>
+              </li>
+              <!-- Nueva pestaña para Calificación -->
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="rating-tab" data-bs-toggle="tab" data-bs-target="#rating" type="button"
+                  role="tab" aria-controls="rating" aria-selected="false">Calificación</button>
               </li>
             </ul>
             <div class="tab-content mt-3" id="teacherTabContent">
@@ -381,10 +385,13 @@
                 <!-- Contenido de Contacto -->
               </div>
               <div class="tab-pane fade" id="education" role="tabpanel" aria-labelledby="education-tab">
-                <!-- Contenido de Formación y Especialización -->
+                <!-- Contenido de Formación -->
               </div>
               <div class="tab-pane fade" id="availability" role="tabpanel" aria-labelledby="availability-tab">
-                <!-- Contenido de Disponibilidad y Otros -->
+                <!-- Contenido de Disponibilidad -->
+              </div>
+              <div class="tab-pane fade" id="rating" role="tabpanel" aria-labelledby="rating-tab">
+                <!-- Aquí se inyectará la información de la calificación -->
               </div>
             </div>
           </div>
@@ -394,6 +401,8 @@
         </div>
       </div>
     </div>
+
+
 
     <!-- Modal para Asignar Nota -->
     <div id="noteModal" class="modal-note">
@@ -537,8 +546,8 @@
               <i class="fas fa-plus"></i> Agregar Nota
           </button>
            <button class="action-btn edit-note-btn" onclick="openUpdateNoteModal('${docente.identificacion}')">
-  <i class="fas fa-edit"></i> Editar Nota
-</button>
+            <i class="fas fa-edit"></i> Editar Nota
+          </button>
  
           <button class="action-btn delete-btn" onclick="deleteDocente('${docente.identificacion}')">
               <i class="fas fa-trash"></i> 
@@ -859,11 +868,10 @@
             // Contenido para la pestaña de Datos Básicos
             const fecha = new Date(data.marca_temporal).toISOString().split("T")[0];
             const basicHTML = `
-              <p><strong>Número de documento:</strong> ${validateData(data.identificacion)}</p>
-              <p><strong>Nombre Completo:</strong> ${validateData(data.nombre_completo)}</p>
-              <p><strong>Fecha de registro formulario:</strong> ${validateData(fecha)}</p>
-          `;
-
+        <p><strong>Número de documento:</strong> ${validateData(data.identificacion)}</p>
+        <p><strong>Nombre Completo:</strong> ${validateData(data.nombre_completo)}</p>
+        <p><strong>Fecha de registro formulario:</strong> ${validateData(fecha)}</p>
+      `;
 
             // Contenido para la pestaña de Contacto
             const contactHTML = `
@@ -892,7 +900,6 @@
         <p><strong>Disponibilidad Miércoles:</strong> ${validateData(data.disponibilidad_miercoles)}</p>
         <p><strong>Disponibilidad Jueves:</strong> ${validateData(data.disponibilidad_jueves)}</p>
         <p><strong>Disponibilidad Viernes:</strong> ${validateData(data.disponibilidad_viernes)}</p>
-
         <p><strong>Disponibilidad Sábado:</strong> ${validateData(data.disponibilidad_sabado)}</p>
         <p><strong>Disponibilidad para Viajar:</strong> ${validateData(data.disponibilidad_viajar)}</p>
         <p><strong>Equipo con Conexión Estable:</strong> ${validateData(data.equipo_conexion_estable)}</p>
@@ -903,13 +910,34 @@
         <p><strong>Video Enlace:</strong> ${data.video_enlace ? `<a href="${data.video_enlace}" target="_blank">${data.video_enlace}</a>` : "No aplica"}</p>
       `;
 
-            // Inyectar contenido en cada pestaña
+            // Inyectar contenido en las pestañas
             document.getElementById("basic").innerHTML = basicHTML;
             document.getElementById("contact").innerHTML = contactHTML;
             document.getElementById("education").innerHTML = educationHTML;
             document.getElementById("availability").innerHTML = availabilityHTML;
 
-            // Mostrar el modal
+            // Ahora, obtener la calificación del docente para el usuario actual
+            fetch(`/docente/${id}/rating`)
+              .then((resp) => {
+                if (!resp.ok) {
+                  throw new Error("Error al obtener la calificación");
+                }
+                return resp.json();
+              })
+              .then((ratingData) => {
+                const ratingHTML = `
+            <p><strong>Nota asignada:</strong> ${ratingData.nota !== null ? ratingData.nota : "No calificado"}</p>
+            <p><strong>Comentario Interno:</strong> ${ratingData.str_Evi || "Sin comentario"}</p>
+            <p><strong>Comentario Externo:</strong> ${ratingData.str_ClienteExterno || "Sin comentario"}</p>
+          `;
+                document.getElementById("rating").innerHTML = ratingHTML;
+              })
+              .catch((err) => {
+                console.error("Error al obtener la calificación:", err);
+                document.getElementById("rating").innerHTML = `<p>Error al cargar la calificación.</p>`;
+              });
+
+            // Mostrar el modal utilizando Bootstrap
             let teacherModal = new bootstrap.Modal(document.getElementById("teacherDetailModal"));
             teacherModal.show();
           })
@@ -918,6 +946,8 @@
             alert("Error al cargar el detalle del docente.");
           });
       }
+
+
 
       function openNoteModal(teacherIdentificacion) {
         const modal = document.getElementById("noteModal");
@@ -1171,8 +1201,71 @@
         }
       }
 
+      async function deleteDocente(teacherIdentificacion) {
+        // Obtener el ID del usuario
+        const currentUser = window.currentUser || localStorage.getItem("currentUser");
+        if (!currentUser) {
+          Swal.fire({
+            icon: 'warning',
+            title: 'Usuario no encontrado',
+            text: "No se encontró el usuario actual. Por favor, inicia sesión nuevamente."
+          });
+          return;
+        }
 
+        // Confirmación antes de eliminar
+        const confirmResult = await Swal.fire({
+          icon: 'warning',
+          title: 'Confirmar eliminación',
+          text: '¿Estás seguro de eliminar la calificación para este docente?',
+          showCancelButton: true,
+          confirmButtonText: 'Sí, eliminar',
+          cancelButtonText: 'Cancelar'
+        });
 
+        if (!confirmResult.isConfirmed) {
+          return; // Si el usuario cancela, no hacemos nada
+        }
+
+        try {
+          const response = await fetch(`http://localhost:8000/docentes/${teacherIdentificacion}/eliminar_nota`, {
+            method: 'DELETE',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-User-Id': currentUser
+            }
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            Swal.fire({
+              icon: 'error',
+              title: 'Error',
+              text: errorData.detail || "Error desconocido al eliminar la calificación."
+            });
+            return;
+          }
+
+          const data = await response.json();
+          Swal.fire({
+            icon: 'success',
+            title: 'Eliminado',
+            text: data.mensaje + ". Nuevo promedio: " + data.promedio_actual
+          });
+
+          // Actualizar la lista de docentes, si la función renderDocentes y currentPage están definidas
+          if (typeof renderDocentes === "function" && typeof currentPage !== "undefined") {
+            renderDocentes(currentPage);
+          }
+        } catch (error) {
+          console.error("Error en deleteDocente:", error);
+          Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: "Error al eliminar la calificación."
+          });
+        }
+      }
 
       // Inicializar la tabla de docentes
       renderDocentes(currentPage);
