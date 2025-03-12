@@ -32,11 +32,22 @@ app.mount(
 # =============================================================================
 # USUARIOS (Autenticación)
 # =============================================================================
+# Diccionario de usuarios
 users = {
-    "admin1": {"id": "1", "password": "admin1", "role": "admin"},
-    "admin2": {"id": "2", "password": "admin2", "role": "admin"},
-    "admin3": {"id": "3", "password": "admin3", "role": "admin"}
+    "admin1": {"id": "10", "password": "admin1", "role": "admin", "nombre_completo": "Admin Uno"},
+    "admin2": {"id": "11", "password": "admin2", "role": "admin", "nombre_completo": "Admin Dos"},
+    "admin3": {"id": "12", "password": "admin3", "role": "admin", "nombre_completo": "Admin Tres"},
+    "formacion empresarial": {"id": "1", "password": "admin3", "role": "admin", "nombre_completo": "Formación Empresarial"},
+    "observatorio de tendencias": {"id": "2", "password": "admin3", "role": "admin", "nombre_completo": "Observatorio de Tendencias"},
+    "emprendimiento": {"id": "4", "password": "admin3", "role": "admin", "nombre_completo": "Emprendimiento"},
+    "coordinador1": {"id": "5", "password": "admin3", "role": "admin", "nombre_completo": "Coordinador Uno"},
+    "coordinador2": {"id": "6", "password": "admin3", "role": "admin", "nombre_completo": "Coordinador Dos"},
+    "vicerrectoria": {"id": "7", "password": "vice", "role": "admin", "nombre_completo": "Vicerrectoría"}
 }
+
+# Crear un mapeo de user_id a usuario (nombre completo, etc.)
+users_by_id = { info["id"]: info for info in users.values() }
+
 
 # =============================================================================
 # MODELOS Pydantic
@@ -341,26 +352,28 @@ def filter_teachers(field: str = Query(...), value: str = Query(...)):
     return docentes
 
 # Endpoint para obtener el detalle de un docente por identificación
-@app.get("/teachers/{teacher_id}")
-def get_teacher_detail(teacher_id: str):
-    connection = get_db()
-    cursor = connection.cursor(dictionary=True)
-    query = """
-        SELECT identificacion, marca_temporal, nombre_completo, correo_electronico, numero_celular, otro_numero_contacto,
-               envio_whatsapp, lugar_residencia, nivel_formacion, titulos_pregrado, areas_especializacion, resumen_experiencia, 
-               titulos_posgrado, certificaciones, disponibilidad_lunes, disponibilidad_martes, disponibilidad_miercoles, 
-               disponibilidad_jueves, disponibilidad_sabado, disponibilidad_viajar, equipo_conexion_estable, estilo_formador, 
-               metodologia, casos_impacto, restriccion_contractual, hoja_vida, video_enlace, aviso_proteccion_datos, promedio
-        FROM docentes
-        WHERE identificacion = %s
-    """
-    cursor.execute(query, (teacher_id,))
-    teacher = cursor.fetchone()
-    cursor.close()
-    connection.close()
-    if teacher is None:
-        raise HTTPException(status_code=404, detail="Docente no encontrado")
-    return teacher
+# @app.get("/teachers/{teacher_id}")
+# def get_teacher_detail(teacher_id: str):
+#     connection = get_db()
+#     cursor = connection.cursor(dictionary=True)
+#     query = """
+#         SELECT identificacion, marca_temporal, nombre_completo, correo_electronico, numero_celular, otro_numero_contacto,
+#                envio_whatsapp, lugar_residencia, nivel_formacion, titulos_pregrado, areas_especializacion, resumen_experiencia, 
+#                titulos_posgrado, certificaciones, disponibilidad_lunes, disponibilidad_martes, disponibilidad_miercoles, 
+#                disponibilidad_jueves, disponibilidad_sabado, disponibilidad_viajar, equipo_conexion_estable, estilo_formador, 
+#                metodologia, casos_impacto, restriccion_contractual, hoja_vida, video_enlace, aviso_proteccion_datos, promedio
+#         FROM docentes
+#         WHERE identificacion = %s
+#     """
+#     cursor.execute(query, (teacher_id,))
+#     teacher = cursor.fetchone()
+#     cursor.close()
+#     connection.close()
+#     if teacher is None:
+#         raise HTTPException(status_code=404, detail="Docente no encontrado")
+#     return teacher
+
+
 
 # Endpoint para obtener docentes paginados
 @app.get("/docentes_paginated", response_class=JSONResponse)
@@ -865,7 +878,76 @@ async def eliminar_nota_endpoint(
         raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/teachers/{teacher_id}", response_class=JSONResponse)
+def get_teacher_detail(teacher_id: str, current_user: str = Depends(get_current_user)):
+    connection = get_db()
+    cursor = connection.cursor(dictionary=True)
     
+    # Consulta para obtener los datos básicos del docente
+    query_teacher = """
+        SELECT identificacion, marca_temporal, nombre_completo, correo_electronico, numero_celular, 
+               otro_numero_contacto, envio_whatsapp, lugar_residencia, nivel_formacion, titulos_pregrado, 
+               areas_especializacion, resumen_experiencia, titulos_posgrado, certificaciones, disponibilidad_lunes, 
+               disponibilidad_martes, disponibilidad_miercoles, disponibilidad_jueves, disponibilidad_sabado, 
+               disponibilidad_viajar, equipo_conexion_estable, estilo_formador, metodologia, casos_impacto, 
+               restriccion_contractual, hoja_vida, video_enlace, aviso_proteccion_datos, promedio,
+               puntuacion_total, total_usuarios
+        FROM docentes
+        WHERE identificacion = %s
+    """
+    cursor.execute(query_teacher, (teacher_id,))
+    teacher = cursor.fetchone()
+    if teacher is None:
+        cursor.close()
+        connection.close()
+        raise HTTPException(status_code=404, detail="Docente no encontrado")
+    
+    # Obtener las calificaciones
+    if current_user == "7":  # Si el usuario es "vicerrectoria"
+        query_notas = """
+            SELECT nota, str_Evi, str_ClienteExterno, created_at, user_id
+            FROM calificaciones
+            WHERE docente_identificacion = %s
+            ORDER BY created_at ASC
+        """
+        cursor.execute(query_notas, (teacher_id,))
+        notas = cursor.fetchall()
+        # Asignar el nombre del usuario usando el diccionario
+        for nota in notas:
+            uid = nota.get("user_id")
+            nota["usuario_nombre"] = users_by_id.get(uid, {}).get("nombre_completo", "Desconocido")
+        print("Notas obtenidas para vicerrectoria:", notas)
+    else:
+        # Obtener solo la nota del usuario actual
+        query_notas = """
+            SELECT nota, str_Evi, str_ClienteExterno, created_at, user_id
+            FROM calificaciones
+            WHERE docente_identificacion = %s AND user_id = %s
+        """
+        cursor.execute(query_notas, (teacher_id, current_user))
+        nota = cursor.fetchone()
+        notas = [nota] if nota else []
+        
+        # Asignar el nombre del usuario usando el diccionario
+        if notas:
+            uid = notas[0].get("user_id")
+            notas[0]["usuario_nombre"] = users_by_id.get(uid, {}).get("nombre_completo", "Desconocido")
+        print("Nota obtenida para usuario normal:", notas)
+
+    teacher["notas"] = notas
+    print("Teacher final:", teacher)
+    cursor.close()
+    connection.close()
+    return {"teacher": teacher}
+
+
+
+
+
+
+
     
 @app.get("/docente/{docente_identificacion}/rating", response_class=JSONResponse)
 async def get_rating_for_teacher(
@@ -892,3 +974,6 @@ async def get_rating_for_teacher(
     if not rating:
         rating = {"nota": None, "str_Evi": "", "str_ClienteExterno": ""}
     return rating
+
+
+

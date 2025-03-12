@@ -342,7 +342,6 @@
     </div>
 
     <!-- Modal de detalle del docente con pestañas -->
-    <!-- Modal de detalle del docente con pestañas -->
     <div class="modal fade" id="teacherDetailModal" tabindex="-1" aria-labelledby="teacherDetailModalLabel"
       aria-hidden="true">
       <div class="modal-dialog modal-xl">
@@ -401,7 +400,6 @@
         </div>
       </div>
     </div>
-
 
 
     <!-- Modal para Asignar Nota -->
@@ -853,6 +851,30 @@
         });
       }
 
+      function buildNotasAccordion(notas) {
+        let accordionHTML = '<div class="accordion" id="notasAccordion">';
+        notas.forEach((nota, index) => {
+          const fecha = nota.created_at ? new Date(nota.created_at).toLocaleDateString() : "";
+          accordionHTML += `
+      <div class="accordion-item">
+        <h2 class="accordion-header" id="heading${index}">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse${index}" aria-expanded="false" aria-controls="collapse${index}">
+            Nota: <strong>${nota.nota}</strong> - Registrado por: <strong>${nota.usuario_nombre || "Desconocido"}</strong> ${fecha ? `- ${fecha}` : ""}
+          </button>
+        </h2>
+        <div id="collapse${index}" class="accordion-collapse collapse" aria-labelledby="heading${index}" data-bs-parent="#notasAccordion">
+          <div class="accordion-body">
+            <p><strong>Comentario Interno:</strong> ${nota.str_Evi || "Sin comentario"}</p>
+            <p><strong>Comentario Externo:</strong> ${nota.str_ClienteExterno || "Sin comentario"}</p>
+          </div>
+        </div>
+      </div>
+    `;
+        });
+        accordionHTML += '</div>';
+        return accordionHTML;
+      }
+
       function viewDocente(id) {
         fetch(`/teachers/${id}`)
           .then((response) => {
@@ -862,80 +884,70 @@
             return response.json();
           })
           .then((data) => {
-            // Función para validar valores nulos o undefined
+            console.log("Datos recibidos:", data);
+            if (!data.teacher) {
+              throw new Error("No se encontró información del docente");
+            }
+            const teacher = data.teacher;
             const validateData = (value) => (value ?? "No aplica");
 
-            // Contenido para la pestaña de Datos Básicos
-            const fecha = new Date(data.marca_temporal).toISOString().split("T")[0];
+            // Pestaña de Datos Básicos
+            const fecha = new Date(teacher.marca_temporal).toISOString().split("T")[0];
             const basicHTML = `
-        <p><strong>Número de documento:</strong> ${validateData(data.identificacion)}</p>
-        <p><strong>Nombre Completo:</strong> ${validateData(data.nombre_completo)}</p>
-        <p><strong>Fecha de registro formulario:</strong> ${validateData(fecha)}</p>
+          <p><strong>Número de documento:</strong> ${validateData(teacher.identificacion)}</p>
+          <p><strong>Nombre Completo:</strong> ${validateData(teacher.nombre_completo)}</p>
+          <p><strong>Fecha de registro:</strong> ${validateData(fecha)}</p>
+          <p><strong>Promedio:</strong> ${validateData(teacher.promedio)}</p>
       `;
-
-            // Contenido para la pestaña de Contacto
-            const contactHTML = `
-        <p><strong>Correo Electrónico:</strong> ${validateData(data.correo_electronico)}</p>
-        <p><strong>Número Celular:</strong> ${validateData(data.numero_celular)}</p>
-        <p><strong>Otro Número:</strong> ${validateData(data.otro_numero_contacto)}</p>
-        <p><strong>Envío WhatsApp:</strong> ${validateData(data.envio_whatsapp)}</p>
-        <p><strong>Lugar de Residencia:</strong> ${validateData(data.lugar_residencia)}</p>
-      `;
-
-            // Contenido para la pestaña de Formación y Especialización
-            const educationHTML = `
-        <p><strong>Nivel de Formación:</strong> ${validateData(data.nivel_formacion)}</p>
-        <p><strong>Títulos Pregrado:</strong> ${validateData(data.titulos_pregrado)}</p>
-        <p><strong>Títulos Posgrado:</strong> ${validateData(data.titulos_posgrado)}</p>
-        <p><strong>Certificaciones:</strong> ${validateData(data.certificaciones)}</p>
-        <p><strong>Áreas de Especialización:</strong> ${validateData(data.areas_especializacion)}</p>
-        <p><strong>Resumen de Experiencia:</strong> ${validateData(data.resumen_experiencia)}</p>
-        <p><strong>Casos de Impacto:</strong> ${validateData(data.casos_impacto)}</p>
-      `;
-
-            // Contenido para la pestaña de Disponibilidad y Otros
-            const availabilityHTML = `
-        <p><strong>Disponibilidad Lunes:</strong> ${validateData(data.disponibilidad_lunes)}</p>
-        <p><strong>Disponibilidad Martes:</strong> ${validateData(data.disponibilidad_martes)}</p>
-        <p><strong>Disponibilidad Miércoles:</strong> ${validateData(data.disponibilidad_miercoles)}</p>
-        <p><strong>Disponibilidad Jueves:</strong> ${validateData(data.disponibilidad_jueves)}</p>
-        <p><strong>Disponibilidad Viernes:</strong> ${validateData(data.disponibilidad_viernes)}</p>
-        <p><strong>Disponibilidad Sábado:</strong> ${validateData(data.disponibilidad_sabado)}</p>
-        <p><strong>Disponibilidad para Viajar:</strong> ${validateData(data.disponibilidad_viajar)}</p>
-        <p><strong>Equipo con Conexión Estable:</strong> ${validateData(data.equipo_conexion_estable)}</p>
-        <p><strong>Estilo Formador:</strong> ${validateData(data.estilo_formador)}</p>
-        <p><strong>Metodología:</strong> ${validateData(data.metodologia)}</p>
-        <p><strong>Restricción Contractual:</strong> ${validateData(data.restriccion_contractual)}</p>
-        <p><strong>Hoja de Vida:</strong> ${data.hoja_vida ? `<a href="${data.hoja_vida}" target="_blank">${data.hoja_vida}</a>` : "No aplica"}</p>
-        <p><strong>Video Enlace:</strong> ${data.video_enlace ? `<a href="${data.video_enlace}" target="_blank">${data.video_enlace}</a>` : "No aplica"}</p>
-      `;
-
-            // Inyectar contenido en las pestañas
             document.getElementById("basic").innerHTML = basicHTML;
+
+            // Pestaña de Contacto
+            const contactHTML = `
+          <p><strong>Correo Electrónico:</strong> ${validateData(teacher.correo_electronico)}</p>
+          <p><strong>Número Celular:</strong> ${validateData(teacher.numero_celular)}</p>
+          <p><strong>Otro Número:</strong> ${validateData(teacher.otro_numero_contacto)}</p>
+          <p><strong>Envío WhatsApp:</strong> ${validateData(teacher.envio_whatsapp)}</p>
+          <p><strong>Lugar de Residencia:</strong> ${validateData(teacher.lugar_residencia)}</p>
+      `;
             document.getElementById("contact").innerHTML = contactHTML;
+
+            // Pestaña de Formación
+            const educationHTML = `
+          <p><strong>Nivel de Formación:</strong> ${validateData(teacher.nivel_formacion)}</p>
+          <p><strong>Títulos Pregrado:</strong> ${validateData(teacher.titulos_pregrado)}</p>
+          <p><strong>Títulos Posgrado:</strong> ${validateData(teacher.titulos_posgrado)}</p>
+          <p><strong>Certificaciones:</strong> ${validateData(teacher.certificaciones)}</p>
+          <p><strong>Áreas de Especialización:</strong> ${validateData(teacher.areas_especializacion)}</p>
+          <p><strong>Resumen de Experiencia:</strong> ${validateData(teacher.resumen_experiencia)}</p>
+          <p><strong>Casos de Impacto:</strong> ${validateData(teacher.casos_impacto)}</p>
+      `;
             document.getElementById("education").innerHTML = educationHTML;
+
+            // Pestaña de Disponibilidad
+            const availabilityHTML = `
+          <p><strong>Disponibilidad Lunes:</strong> ${validateData(teacher.disponibilidad_lunes)}</p>
+          <p><strong>Disponibilidad Martes:</strong> ${validateData(teacher.disponibilidad_martes)}</p>
+          <p><strong>Disponibilidad Miércoles:</strong> ${validateData(teacher.disponibilidad_miercoles)}</p>
+          <p><strong>Disponibilidad Jueves:</strong> ${validateData(teacher.disponibilidad_jueves)}</p>
+          <p><strong>Disponibilidad Sábado:</strong> ${validateData(teacher.disponibilidad_sabado)}</p>
+          <p><strong>Disponibilidad para Viajar:</strong> ${validateData(teacher.disponibilidad_viajar)}</p>
+          <p><strong>Equipo con Conexión Estable:</strong> ${validateData(teacher.equipo_conexion_estable)}</p>
+          <p><strong>Estilo Formador:</strong> ${validateData(teacher.estilo_formador)}</p>
+          <p><strong>Metodología:</strong> ${validateData(teacher.metodologia)}</p>
+          <p><strong>Restricción Contractual:</strong> ${validateData(teacher.restriccion_contractual)}</p>
+          <p><strong>Hoja de Vida:</strong> ${teacher.hoja_vida ? `<a href="${teacher.hoja_vida}" target="_blank">${teacher.hoja_vida}</a>` : "No aplica"}</p>
+          <p><strong>Video Enlace:</strong> ${teacher.video_enlace ? `<a href="${teacher.video_enlace}" target="_blank">${teacher.video_enlace}</a>` : "No aplica"}</p>
+      `;
             document.getElementById("availability").innerHTML = availabilityHTML;
 
-            // Ahora, obtener la calificación del docente para el usuario actual
-            fetch(`/docente/${id}/rating`)
-              .then((resp) => {
-                if (!resp.ok) {
-                  throw new Error("Error al obtener la calificación");
-                }
-                return resp.json();
-              })
-              .then((ratingData) => {
-                const ratingHTML = `
-            <p><strong>Nota asignada:</strong> ${ratingData.nota !== null ? ratingData.nota : "No calificado"}</p>
-            <p><strong>Comentario Interno:</strong> ${ratingData.str_Evi || "Sin comentario"}</p>
-            <p><strong>Comentario Externo:</strong> ${ratingData.str_ClienteExterno || "Sin comentario"}</p>
-          `;
-                document.getElementById("rating").innerHTML = ratingHTML;
-              })
-              .catch((err) => {
-                console.error("Error al obtener la calificación:", err);
-                document.getElementById("rating").innerHTML = `<p>Error al cargar la calificación.</p>`;
-              });
+            // Pestaña de Calificación: Construir el accordion con todas las calificaciones
+            let ratingHTML = "";
+            if (teacher.notas && teacher.notas.length > 0) {
+              ratingHTML = buildNotasAccordion(teacher.notas);
+            } else {
+              ratingHTML = "<p>No hay calificaciones registradas.</p>";
+            }
+            document.getElementById("rating").innerHTML = ratingHTML;
 
             // Mostrar el modal utilizando Bootstrap
             let teacherModal = new bootstrap.Modal(document.getElementById("teacherDetailModal"));
@@ -943,10 +955,13 @@
           })
           .catch((error) => {
             console.error("Error:", error);
-            alert("Error al cargar el detalle del docente.");
+            Swal.fire({
+              icon: 'error',
+              title: 'Error',
+              text: "Error al cargar el detalle del docente."
+            });
           });
       }
-
 
 
       function openNoteModal(teacherIdentificacion) {
