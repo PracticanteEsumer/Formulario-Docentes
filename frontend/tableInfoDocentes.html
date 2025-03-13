@@ -70,7 +70,30 @@
       margin-bottom: 5px;
     }
 
-    #noteForm input,
+    /* Estilos para los textarea de los formularios */
+    #noteForm textarea,
+    #updateNoteForm textarea {
+      width: 100%;
+      padding: 14px;
+      font-size: 16px;
+      margin-bottom: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      transition: border-color 0.3s ease;
+      overflow-y: hidden;
+      /* Se ajusta automáticamente hasta cierto límite */
+      max-height: 300px;
+      /* Límite máximo de altura */
+      resize: none;
+      /* Evita el redimensionamiento manual */
+    }
+
+    #noteForm textarea:focus,
+    #updateNoteForm textarea:focus {
+      border-color: #007bff;
+      outline: none;
+    }
+
     #noteForm select {
       width: 100%;
       padding: 12px;
@@ -81,7 +104,6 @@
       transition: border-color 0.3s ease;
     }
 
-    #noteForm input:focus,
     #noteForm select:focus {
       border-color: #007bff;
       outline: none;
@@ -417,10 +439,10 @@
             <option value="5">5</option>
           </select>
           <label for="str_Evi">Comentario De evaluación Interna:</label>
-          <input type="text" id="str_Evi" name="str_Evi" required placeholder="Ingrese el comentario." />
+          <textarea id="str_Evi" name="str_Evi" required placeholder="Ingrese el comentario."></textarea>
           <label for="str_ClienteExterno">Comentario de evaluación Externa:</label>
-          <input type="text" id="str_ClienteExterno" name="str_ClienteExterno" required
-            placeholder="Ingrese el comentario." />
+          <textarea id="str_ClienteExterno" name="str_ClienteExterno" required
+            placeholder="Ingrese el comentario."></textarea>
           <button type="submit">Guardar Nota</button>
         </form>
       </div>
@@ -441,14 +463,15 @@
             <option value="5">5</option>
           </select>
           <label for="update_str_Evi">Comentario de Evaluación Interna:</label>
-          <input type="text" id="update_str_Evi" name="str_Evi" required placeholder="Ingrese el comentario." />
+          <textarea id="update_str_Evi" name="str_Evi" required placeholder="Ingrese el comentario."></textarea>
           <label for="update_str_ClienteExterno">Comentario de Evaluación Externa:</label>
-          <input type="text" id="update_str_ClienteExterno" name="str_ClienteExterno" required
-            placeholder="Ingrese el comentario." />
+          <textarea id="update_str_ClienteExterno" name="str_ClienteExterno" required
+            placeholder="Ingrese el comentario."></textarea>
           <button type="submit">Guardar Cambios</button>
         </form>
       </div>
     </div>
+
 
 
     <script>
@@ -624,6 +647,13 @@
             <button class="action-btn add-note-btn" onclick="openNoteModal('${docente.identificacion}')">
                 <i class="fas fa-plus"></i> Agregar Nota
             </button>
+            <button class="action-btn edit-note-btn" onclick="openUpdateNoteModal('${docente.identificacion}')">
+            <i class="fas fa-edit"></i> Editar Nota
+          </button>
+ 
+          <button class="action-btn delete-btn" onclick="deleteDocente('${docente.identificacion}')">
+              <i class="fas fa-trash"></i> 
+          </button>
         </td>
         <td class="text-center">${starRating}</td>
       `;
@@ -843,6 +873,14 @@
                 <button class="action-btn add-note-btn" onclick="openNoteModal('${teacher.identificacion}')">
                     <i class="fas fa-plus"></i> Agregar Nota
                 </button>
+                <button class="action-btn edit-note-btn" onclick="openUpdateNoteModal('${teacher.identificacion}')">
+                  <i class="fas fa-edit"></i> Editar Nota
+                </button>
+      
+                <button class="action-btn delete-btn" onclick="deleteDocente('${teacher.identificacion}')">
+                    <i class="fas fa-trash"></i> 
+                </button>
+                
                 
             </td>
             <td class="text-center">${starRating}</td>
@@ -962,6 +1000,18 @@
             });
           });
       }
+      function autoResizeTextareas(modalElement) {
+        const textareas = modalElement.querySelectorAll("textarea");
+        textareas.forEach((textarea) => {
+          // Reinicia la altura para obtener el scrollHeight correcto
+          textarea.style.height = "auto";
+          const newHeight = Math.min(textarea.scrollHeight, 300); // 300px como altura máxima
+          textarea.style.height = newHeight + "px";
+          // Si el contenido excede el máximo, habilita el scroll vertical
+          textarea.style.overflowY = (textarea.scrollHeight > 300) ? "auto" : "hidden";
+        });
+      }
+
 
 
       function openNoteModal(teacherIdentificacion) {
@@ -969,12 +1019,18 @@
         console.log("Abriendo modal para:", teacherIdentificacion);
         modal.classList.add("active");
 
+        // Recalcula la altura de los textarea una vez visible el modal
+        setTimeout(() => {
+          autoResizeTextareas(modal);
+        }, 50);
+
         const form = document.getElementById("noteForm");
         form.onsubmit = async function (event) {
           event.preventDefault();
           await submitNote(teacherIdentificacion);
         };
       }
+
 
       function closeNoteModal() {
         const modal = document.getElementById("noteModal");
@@ -1090,7 +1146,7 @@
         console.log("Abriendo modal de editar para:", teacherIdentificacion);
 
         try {
-          // Llamar al endpoint para obtener la calificación del docente para el usuario actual
+          // Llamada al endpoint para obtener la calificación del docente para el usuario actual
           const response = await fetch(`http://localhost:8000/docente/${teacherIdentificacion}/rating`);
           if (!response.ok) {
             throw new Error("Error al obtener la calificación");
@@ -1098,7 +1154,7 @@
           const rating = await response.json();
           console.log("Rating recibido:", rating);
 
-          // Si no hay nota registrada, mostramos una alerta y no abrimos el modal
+          // Si no hay nota registrada, muestra una alerta y no abre el modal
           if (rating.nota === null || rating.nota === "" || rating.nota === undefined) {
             Swal.fire({
               icon: 'info',
@@ -1108,9 +1164,14 @@
             return;
           }
 
-          // Si existe calificación, procedemos a abrir el modal
+          // Si existe calificación, procede a abrir el modal
           const modal = document.getElementById("updateNoteModal");
           modal.classList.add("active");
+
+          // Recalcula la altura de los textarea cuando el modal ya está visible
+          setTimeout(() => {
+            autoResizeTextareas(modal);
+          }, 50);
 
           // Asignar valores a los inputs del modal utilizando los nombres exactos de la BD
           document.getElementById("updateNoteSelect").value = rating.nota || '1';
@@ -1133,6 +1194,7 @@
           });
         }
       }
+
 
       // Función para cerrar el modal de Actualización de Nota
       function closeUpdateNoteModal() {
