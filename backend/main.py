@@ -351,6 +351,7 @@ def filter_teachers(field: str = Query(...), value: str = Query(...)):
     connection.close()
     return docentes
 
+
 # Endpoint para obtener el detalle de un docente por identificación
 # @app.get("/teachers/{teacher_id}")
 # def get_teacher_detail(teacher_id: str):

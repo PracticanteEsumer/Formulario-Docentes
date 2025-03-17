@@ -267,23 +267,26 @@
       font-style: italic;
       color: #555;
     }
+
+    #logout-btn {
+      background-color: #ff0000;
+      color: white;
+      padding: 10px 30px;
+      font-size: 16px;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      display: block;
+      margin: 30px 0;
+      text-align: center;
+      float: right;
+    }
   </style>
 
 
 </head>
 
 <body>
-  <div class="navbar">
-    <ul>
-      <li>
-        <a href="/admin"><i class="fas fa-chalkboard-teacher"></i> Información Docentes</a>
-      </li>
-    </ul>
-    <button class="regresar-btn" id="logout-btn">
-      <i class="fas fa-sign-out-alt"></i> Cerrar sesión
-    </button>
-  </div>
-
   <div class="main-content">
     <h1>Lista de Docentes</h1>
 
@@ -349,19 +352,30 @@
     <div class="paginator-container">
       <button id="prev-page" class="page-btn">Anterior</button>
       <span id="page-info"></span>
+
       <button id="next-page" class="page-btn">Siguiente</button>
+      <div class="container">
+        <button id="logout-btn">Cerrar Sesión</button>
+      </div>
+
     </div>
 
     <!-- Sección de carga de archivos debajo del paginador -->
     <div class="file-upload">
       <form id="excel-upload-form" enctype="multipart/form-data">
         <label for="file">Selecciona un archivo Excel (.xlsx, .xls):</label>
+
         <input type="file" id="file" name="file" accept=".xlsx, .xls" required />
         <button type="submit">Subir</button>
+
+
+
+
       </form>
       <!-- Mensaje de éxito o error -->
       <div id="message" style="margin-top: 10px"></div>
     </div>
+
 
     <!-- Modal de detalle del docente con pestañas -->
     <div class="modal fade" id="teacherDetailModal" tabindex="-1" aria-labelledby="teacherDetailModalLabel"
